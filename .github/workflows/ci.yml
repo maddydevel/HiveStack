@@ -1,0 +1,118 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.23"
+  GOLANGCI_VERSION: "v1.59"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build CLI
+        run: go build -o bin/hive ./cmd/hive
+
+      - name: Build Node Agent
+        run: go build -o bin/hive-node ./node/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-binaries
+          path: bin/
+          retention-days: 7
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./... -v -race -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_VERSION }}
+          args: --timeout=10m
+
+      - name: Run golangci-lint
+        run: golangci-lint run ./...
+
+  validate-openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate OpenAPI spec
+        uses: stoplightio/spectral-action@v1
+        with:
+          file: api/openapi.yaml
+
+      - name: Install openapi-generator
+        run: |
+          wget -q https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.2.0/openapi-generator-cli-7.2.0.jar -O /tmp/openapi-generator.jar
+
+      - name: Validate OpenAPI can generate Go client
+        run: |
+          java -jar /tmp/openapi-generator.jar validate -i api/openapi.yaml
+
+      - name: Generate Go client (check)
+        run: |
+          mkdir -p /tmp/gen-client
+          java -jar /tmp/openapi-generator.jar generate \
+            -i api/openapi.yaml \
+            -g go \
+            -o /tmp/gen-client \
+            --skip-validate-spec
+          echo "OpenAPI spec is valid and generates Go client successfully"

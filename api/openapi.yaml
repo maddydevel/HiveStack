@@ -1,10 +1,1531 @@
 openapi: "3.0.3"
 info:
   title: HiveStack API
-  version: 0.1.0
-  description: REST API for HiveStack virtualization management.
+  description: REST API for HiveStack — KVM-based virtualization management platform. VMware migration target with vCenter-like management.
+  version: "0.1.0"
+  contact:
+    name: HiveStack Team
 servers:
-  - url: http://localhost:8080/api
-    description: Local development
-paths: {}
-components: {}
+  - url: https://localhost:8443/api/v1
+    description: Production (TLS)
+  - url: http://localhost:8080/api/v1
+    description: Development
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Datacenters
+  - name: Clusters
+  - name: Hosts
+  - name: VMs
+  - name: Storage
+  - name: Networks
+  - name: Backups
+  - name: Migration
+  - name: Events
+  - name: Health
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  token: { type: string, description: JWT token }
+                  expiresAt: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: role
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Users]
+      summary: Create user
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                role: { type: string, enum: [admin, operator, viewer, auditor], default: viewer }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Users]
+      summary: Get user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Users]
+      summary: Update user
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+                role: { type: string, enum: [admin, operator, viewer, auditor] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Users]
+      summary: Delete user
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /datacenters:
+    get:
+      tags: [Datacenters]
+      summary: List datacenters
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Datacenter" }
+    post:
+      tags: [Datacenters]
+      summary: Create datacenter
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+                description: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datacenter" }
+  /datacenters/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Datacenters]
+      summary: Get datacenter
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datacenter" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Datacenters]
+      summary: Delete datacenter
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /clusters:
+    get:
+      tags: [Clusters]
+      summary: List clusters
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: datacenterId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Cluster" }
+    post:
+      tags: [Clusters]
+      summary: Create cluster
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, datacenterId]
+              properties:
+                name: { type: string, minLength: 1 }
+                datacenterId: { type: string, format: uuid }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cluster" }
+  /clusters/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Clusters]
+      summary: Get cluster
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cluster" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /clusters/{id}/hosts:
+    get:
+      tags: [Clusters]
+      summary: List hosts in cluster
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Host" }
+
+  /hosts:
+    get:
+      tags: [Hosts]
+      summary: List hosts
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: clusterId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [online, offline, maintenance] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Host" }
+    post:
+      tags: [Hosts]
+      summary: Register host
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, hostname, agentToken]
+              properties:
+                name: { type: string, minLength: 1 }
+                hostname: { type: string }
+                ipAddress: { type: string }
+                clusterId: { type: string, format: uuid }
+                agentToken: { type: string, description: Node agent auth token }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+  /hosts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Hosts]
+      summary: Get host
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Hosts]
+      summary: Update host
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                clusterId: { type: string, format: uuid }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+    delete:
+      tags: [Hosts]
+      summary: Remove host
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Removed }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /hosts/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Hosts]
+      summary: Real-time host status
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostStatus" }
+  /hosts/{id}/maintenance:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [Hosts]
+      summary: Enter maintenance mode
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+    delete:
+      tags: [Hosts]
+      summary: Exit maintenance mode
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Host" }
+
+  /vms:
+    get:
+      tags: [VMs]
+      summary: List VMs
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: hostId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: clusterId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [running, stopped, paused, suspended, migrating, creating] }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VM" }
+    post:
+      tags: [VMs]
+      summary: Create VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVMRequest" }
+      responses:
+        "202":
+          description: VM creation accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VM" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /vms/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [VMs]
+      summary: Get VM
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VM" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [VMs]
+      summary: Update VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVMRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VM" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [VMs]
+      summary: Delete VM
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: VM deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vms/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [VMs]
+      summary: Start VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VMOperationRequest" }
+      responses:
+        "202":
+          description: Start initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationStatus" }
+  /vms/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [VMs]
+      summary: Stop VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VMOperationRequest" }
+      responses:
+        "202":
+          description: Stop initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationStatus" }
+  /vms/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [VMs]
+      summary: Restart VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VMOperationRequest" }
+      responses:
+        "202":
+          description: Restart initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationStatus" }
+  /vms/{id}/migrate:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [VMs]
+      summary: Migrate VM
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MigrateVMRequest" }
+      responses:
+        "202":
+          description: Migration initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationStatus" }
+  /vms/{id}/snapshots:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [VMs]
+      summary: List VM snapshots
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Snapshot" }
+    post:
+      tags: [VMs]
+      summary: Create snapshot
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSnapshotRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Snapshot" }
+  /vms/{id}/snapshots/{snapshotId}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: snapshotId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [VMs]
+      summary: Delete snapshot
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Snapshot deleted }
+  /vms/{id}/console:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [VMs]
+      summary: VM console URL
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [vnc, spice], default: vnc }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsoleResponse" }
+  /vms/{id}/stats:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [VMs]
+      summary: VM statistics
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VMStats" }
+
+  /storage-pools:
+    get:
+      tags: [Storage]
+      summary: List storage pools
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StoragePool" }
+    post:
+      tags: [Storage]
+      summary: Create storage pool
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateStoragePoolRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePool" }
+  /storage-pools/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Storage]
+      summary: Get storage pool
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoragePool" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Storage]
+      summary: Delete storage pool
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /storage-pools/{id}/disks:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Storage]
+      summary: List disks in pool
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Disk" }
+  /disks/{diskId}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: diskId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Storage]
+      summary: Get disk
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Disk" }
+    put:
+      tags: [Storage]
+      summary: Resize disk
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResizeDiskRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Disk" }
+
+  /networks:
+    get:
+      tags: [Networks]
+      summary: List networks
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Network" }
+    post:
+      tags: [Networks]
+      summary: Create network
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateNetworkRequest" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Network" }
+  /networks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Networks]
+      summary: Get network
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Network" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Networks]
+      summary: Delete network
+      security: [{ BearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /backups:
+    get:
+      tags: [Backups]
+      summary: List backups
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: vmId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [completed, running, failed] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Backup" }
+    post:
+      tags: [Backups]
+      summary: Create backup
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBackupRequest" }
+      responses:
+        "202":
+          description: Backup started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backup" }
+  /backups/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Backups]
+      summary: Get backup
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Backup" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /backups/{id}/restore:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [Backups]
+      summary: Restore from backup
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestoreBackupRequest" }
+      responses:
+        "202":
+          description: Restore initiated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationStatus" }
+  /backups/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [Backups]
+      summary: Cancel backup
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Backup cancelled
+
+  /migration/import/vcenter:
+    post:
+      tags: [Migration]
+      summary: Import from vCenter
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VCenterImportRequest" }
+      responses:
+        "202":
+          description: Import started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportJob" }
+  /migration/import/ovf:
+    post:
+      tags: [Migration]
+      summary: Import OVF/OVA
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/OvfImportRequest" }
+      responses:
+        "202":
+          description: Import started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportJob" }
+  /migration/import/vmx:
+    post:
+      tags: [Migration]
+      summary: Import VMX
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VmxImportRequest" }
+      responses:
+        "202":
+          description: Import started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportJob" }
+  /migration/jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Migration]
+      summary: Get migration job status
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportJob" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /migration/discovery:
+    post:
+      tags: [Migration]
+      summary: Discover VMware environment
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VMwareDiscoveryRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VMwareDiscoveryResult" }
+
+  /events:
+    get:
+      tags: [Events]
+      summary: List events
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: until
+          in: query
+          schema: { type: string, format: date-time }
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string, enum: [info, warning, error, critical] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SnapshotId:
+      name: snapshotId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Access denied
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+        details:
+          type: array
+          items: { type: object }
+
+    OperationStatus:
+      type: object
+      properties:
+        operationId: { type: string, format: uuid }
+        type: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        progress: { type: integer, description: "0-100" }
+        message: { type: string }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, operator, viewer, auditor] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Datacenter:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [active, paused, archived], default: active }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Cluster:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        datacenterId: { type: string, format: uuid }
+        status: { type: string, enum: [active, paused] }
+        hostCount: { type: integer }
+        vmCount: { type: integer }
+        totalCpu: { type: integer, description: "Total vCPUs" }
+        totalMemory: { type: integer, description: "Total memory in bytes" }
+        createdAt: { type: string, format: date-time }
+
+    Host:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        hostname: { type: string }
+        ipAddress: { type: string }
+        clusterId: { type: string, format: uuid }
+        status: { type: string, enum: [online, offline, maintenance] }
+        cpuModel: { type: string }
+        cpuCount: { type: integer }
+        cpuUsage: { type: integer, description: "Percentage" }
+        memoryTotal: { type: integer, description: "Bytes" }
+        memoryUsed: { type: integer, description: "Bytes" }
+        memoryUsage: { type: integer, description: "Percentage" }
+        storageTotal: { type: integer, description: "Bytes" }
+        storageUsed: { type: integer, description: "Bytes" }
+        os: { type: string }
+        hypervisor: { type: string, enum: [kvm], default: kvm }
+        joinedAt: { type: string, format: date-time }
+        lastHeartbeat: { type: string, format: date-time }
+        maintenanceMode: { type: boolean, default: false }
+        createdAt: { type: string, format: date-time }
+
+    HostStatus:
+      type: object
+      properties:
+        hostId: { type: string, format: uuid }
+        cpuUsage: { type: integer }
+        memoryUsage: { type: integer }
+        storageUsage: { type: integer }
+        networkUsage: { type: integer }
+        runningVmCount: { type: integer }
+        totalVmCount: { type: integer }
+        timestamp: { type: string, format: date-time }
+
+    RegisterHostRequest:
+      type: object
+      required: [name, hostname, agentToken]
+      properties:
+        name: { type: string, minLength: 1 }
+        hostname: { type: string }
+        ipAddress: { type: string }
+        clusterId: { type: string, format: uuid }
+        agentToken: { type: string, description: "Node agent auth token" }
+
+    UpdateHostRequest:
+      type: object
+      properties:
+        name: { type: string }
+        clusterId: { type: string, format: uuid }
+
+    MaintenanceRequest:
+      type: object
+      properties:
+        reason: { type: string }
+
+    VM:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        identifier: { type: string, description: "Human-readable ID (e.g. HVS-0001)" }
+        name: { type: string }
+        description: { type: string }
+        hostId: { type: string, format: uuid }
+        status: { type: string, enum: [running, stopped, paused, suspended, migrating, creating] }
+        cpus: { type: integer }
+        cpuAllocation: { type: string, enum: [dedicated, shared], default: dedicated }
+        memory: { type: integer, description: "Bytes" }
+        memoryBallooning: { type: boolean, default: false }
+        disks:
+          type: array
+          items: { $ref: "#/components/schemas/VMDisk" }
+        networkInterfaces:
+          type: array
+          items: { $ref: "#/components/schemas/VMNetworkInterface" }
+        os: { type: string, description: "Guest OS hint" }
+        templateId: { type: string, format: uuid, nullable: true }
+        snapshotCount: { type: integer, default: 0 }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    VMDisk:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        size: { type: integer, description: "Bytes" }
+        format: { type: string, enum: [qcow2, raw, vmdk], default: qcow2 }
+        storagePoolId: { type: string, format: uuid }
+        path: { type: string }
+        mounted: { type: boolean }
+        bus: { type: string, enum: [virtio, sata, ide], default: virtio }
+
+    VMNetworkInterface:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        macAddress: { type: string }
+        networkId: { type: string, format: uuid }
+        model: { type: string, enum: [virtio, vmxnet3, e1000], default: virtio }
+        ipAddresses: { type: array, items: { type: string } }
+
+    CreateVMRequest:
+      type: object
+      required: [name, cpus, memory]
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        cpus: { type: integer, minimum: 1, maximum: 128 }
+        cpuAllocation: { type: string, enum: [dedicated, shared], default: dedicated }
+        memory: { type: integer, minimum: 67108864, description: "Min 64MB in bytes" }
+        memoryBallooning: { type: boolean, default: false }
+        disks:
+          type: array
+          items: { $ref: "#/components/schemas/CreateVMDiskRequest" }
+        networkInterfaces:
+          type: array
+          items: { $ref: "#/components/schemas/CreateVMNetworkInterfaceRequest" }
+        templateId: { type: string, format: uuid, description: "Create from template (exclusive with isoPath)" }
+        isoPath: { type: string, description: "Install from ISO (exclusive with templateId)" }
+        os: { type: string, description: "Guest OS hint" }
+        clusterId: { type: string, format: uuid }
+        hostId: { type: string, format: uuid }
+
+    CreateVMDiskRequest:
+      type: object
+      required: [size]
+      properties:
+        name: { type: string }
+        size: { type: integer, minimum: 1048576, description: "Min 1MB" }
+        format: { type: string, enum: [qcow2, raw], default: qcow2 }
+        storagePoolId: { type: string, format: uuid }
+        mounted: { type: boolean, default: true }
+        bus: { type: string, enum: [virtio, sata, ide], default: virtio }
+
+    CreateVMNetworkInterfaceRequest:
+      type: object
+      required: [networkId]
+      properties:
+        name: { type: string }
+        networkId: { type: string, format: uuid }
+        model: { type: string, enum: [virtio, vmxnet3, e1000], default: virtio }
+
+    UpdateVMRequest:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        cpus: { type: integer }
+        cpuAllocation: { type: string, enum: [dedicated, shared] }
+        memory: { type: integer }
+        memoryBallooning: { type: boolean }
+        disks:
+          type: array
+          items: { $ref: "#/components/schemas/CreateVMDiskRequest" }
+        networkInterfaces:
+          type: array
+          items: { $ref: "#/components/schemas/CreateVMNetworkInterfaceRequest" }
+
+    VMOperationRequest:
+      type: object
+      properties:
+        force: { type: boolean, default: false, description: "Force operation (e.g. hard shutdown)" }
+        timeout: { type: integer, description: "Timeout in seconds" }
+
+    MigrateVMRequest:
+      type: object
+      required: [targetHostId]
+      properties:
+        targetHostId: { type: string, format: uuid, description: "Target host" }
+        live: { type: boolean, default: true, description: "Live migration if possible" }
+        timeout: { type: integer, description: "Migration timeout in seconds" }
+
+    CreateSnapshotRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        quiesce: { type: boolean, default: true, description: "Quiesce filesystem (requires guest agent)" }
+
+    Snapshot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        vmId: { type: string, format: uuid }
+        state: { type: string, enum: [active, deleted] }
+        createdAt: { type: string, format: date-time }
+        size: { type: integer, description: "Bytes" }
+
+    VMStats:
+      type: object
+      properties:
+        vmId: { type: string, format: uuid }
+        cpuUsage: { type: number, description: "Percentage 0.0-100.0" }
+        memoryUsage: { type: integer, description: "Bytes" }
+        memoryTotal: { type: integer, description: "Bytes" }
+        diskReadBytes: { type: integer, description: "Since last sample" }
+        diskWriteBytes: { type: integer, description: "Since last sample" }
+        networkReadBytes: { type: integer, description: "Since last sample" }
+        networkWriteBytes: { type: integer, description: "Since last sample" }
+        timestamp: { type: string, format: date-time }
+
+    StoragePool:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string, enum: [directory, lvm, lvm-thin, zfs, nfs, iscsi, ceph-rbd] }
+        datacenterId: { type: string, format: uuid }
+        status: { type: string, enum: [active, inactive, error] }
+        totalCapacity: { type: integer, description: "Bytes" }
+        freeSpace: { type: integer, description: "Bytes" }
+        usedSpace: { type: integer, description: "Bytes" }
+        features:
+          type: array
+          items: { type: string, description: "snapshots, thin-provisioning, etc." }
+        createdAt: { type: string, format: date-time }
+
+    CreateStoragePoolRequest:
+      type: object
+      required: [name, type, path]
+      properties:
+        name: { type: string, minLength: 1 }
+        type: { type: string, enum: [directory, lvm, zfs, nfs, iscsi] }
+        path: { type: string, description: "Filesystem path or mount point" }
+        nfsServer: { type: string, description: "NFS server (for NFS type)" }
+        nfsPath: { type: string, description: "NFS export path" }
+        iSCSITarget: { type: string, description: "iSCSI target" }
+        description: { type: string }
+
+    Disk:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        size: { type: integer, description: "Bytes" }
+        format: { type: string, enum: [qcow2, raw, vmdk] }
+        storagePoolId: { type: string, format: uuid }
+        path: { type: string }
+        vmId: { type: string, format: uuid, nullable: true }
+        mounted: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    ResizeDiskRequest:
+      type: object
+      required: [size]
+      properties:
+        size: { type: integer, minimum: 1048576, description: "Must be >= current size" }
+
+    Network:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [bridge, nat, macvlan], default: bridge }
+        datacenterId: { type: string, format: uuid }
+        bridgeName: { type: string, description: "Linux bridge name" }
+        vlanId: { type: integer, description: "VLAN ID 1-4094" }
+        subnet: { type: string, description: "CIDR e.g. 192.168.1.0/24" }
+        gateway: { type: string }
+        dhcp: { type: boolean, default: false }
+        dns:
+          type: array
+          items: { type: string }
+        status: { type: string, enum: [active, inactive] }
+        createdAt: { type: string, format: date-time }
+
+    CreateNetworkRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        type: { type: string, enum: [bridge, nat, macvlan], default: bridge }
+        bridgeName: { type: string, description: "Custom bridge name" }
+        vlanId: { type: integer, minimum: 1, maximum: 4094 }
+        subnet: { type: string }
+        gateway: { type: string }
+        dhcp: { type: boolean, default: false }
+        dns:
+          type: array
+          items: { type: string }
+
+    Backup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        vmId: { type: string, format: uuid }
+        vmName: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        type: { type: string, enum: [full, incremental] }
+        storagePath: { type: string, description: "Path/URL where stored" }
+        size: { type: integer, description: "Bytes" }
+        progress: { type: integer, description: "0-100" }
+        message: { type: string }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        scheduleId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    CreateBackupRequest:
+      type: object
+      required: [vmId]
+      properties:
+        vmId: { type: string, format: uuid }
+        name: { type: string, description: "Auto-generated if not specified" }
+        storagePath: { type: string }
+        type: { type: string, enum: [full, incremental], default: full }
+        timeout: { type: integer, description: "Seconds" }
+
+    RestoreBackupRequest:
+      type: object
+      properties:
+        targetVmId: { type: string, format: uuid, description: "VM to restore to (creates new if not specified)" }
+        newName: { type: string, description: "Name for restored VM" }
+        diskOnly: { type: boolean, default: false, description: "Restore only disks" }
+
+    VCenterImportRequest:
+      type: object
+      required: [vcenterUrl, username]
+      properties:
+        vcenterUrl: { type: string, format: uri, description: "vCenter API URL" }
+        username: { type: string }
+        password: { type: string, description: "Or use apiToken" }
+        apiToken: { type: string, description: "vCenter API token" }
+        clusterId: { type: string, description: "Filter to specific cluster" }
+        datacenterName: { type: string, description: "Filter to specific datacenter" }
+        sslVerify: { type: boolean, default: true }
+        mapping:
+          type: object
+          properties:
+            networkMappings: { type: object, additionalProperties: { type: string } }
+            storageMappings: { type: object, additionalProperties: { type: string } }
+
+    OvfImportRequest:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary, description: "OVF/OVA file upload" }
+        name: { type: string, description: "VM name (from OVF if not specified)" }
+        clusterId: { type: string, format: uuid }
+        storagePoolId: { type: string, format: uuid }
+        networkId: { type: string, format: uuid }
+
+    VmxImportRequest:
+      type: object
+      required: [vmxPath]
+      properties:
+        vmxPath: { type: string, description: "Path to VMX file on storage" }
+        name: { type: string }
+        clusterId: { type: string, format: uuid }
+        storagePoolId: { type: string, format: uuid }
+        networkId: { type: string, format: uuid }
+
+    ImportJob:
+      type: object
+      properties:
+        jobId: { type: string, format: uuid }
+        type: { type: string, enum: [vcenter_import, ovf_import, vmx_import] }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        progress: { type: integer }
+        message: { type: string }
+        importedVmCount: { type: integer, default: 0 }
+        failedVmCount: { type: integer, default: 0 }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ImportItem" }
+
+    ImportItem:
+      type: object
+      properties:
+        sourceName: { type: string }
+        targetName: { type: string }
+        status: { type: string, enum: [pending, importing, imported, failed, skipped] }
+        message: { type: string }
+        vmId: { type: string, format: uuid, nullable: true }
+
+    VMwareDiscoveryRequest:
+      type: object
+      required: [vcenterUrl]
+      properties:
+        vcenterUrl: { type: string, format: uri }
+        username: { type: string }
+        password: { type: string }
+        apiToken: { type: string }
+        sslVerify: { type: boolean, default: true }
+
+    VMwareDiscoveryResult:
+      type: object
+      properties:
+        vcenterVersion: { type: string }
+        datacenters:
+          type: array
+          items: { $ref: "#/components/schemas/VMDatacenter" }
+        totalVmCount: { type: integer }
+        compatibleVmCount: { type: integer }
+        incompatibleVmCount: { type: integer }
+        warnings:
+          type: array
+          items: { type: string }
+        recommendations:
+          type: array
+          items: { type: string }
+
+    VMDatacenter:
+      type: object
+      properties:
+        name: { type: string }
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/VMCluster" }
+
+    VMCluster:
+      type: object
+      properties:
+        name: { type: string }
+        vmCount: { type: integer }
+        hosts: { type: integer }
+        vms:
+          type: array
+          items: { $ref: "#/components/schemas/VMwareVM" }
+
+    VMwareVM:
+      type: object
+      properties:
+        name: { type: string }
+        id: { type: string }
+        powerState: { type: string, enum: [on, off, suspended] }
+        cpuCount: { type: integer }
+        memoryMB: { type: integer }
+        diskCount: { type: integer }
+        guestOs: { type: string }
+        compatibilityIssues:
+          type: array
+          items: { type: string }
+        recommendedAction: { type: string }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [vm_created, vm_started, vm_stopped, vm_migrated, snapshot_created,
+                 host_registered, host_offline, backup_completed, backup_failed,
+                 user_login, user_logout, config_changed] }
+        severity: { type: string, enum: [info, warning, error, critical] }
+        message: { type: string }
+        actor:
+          type: object
+          properties:
+            type: { type: string, enum: [user, agent, system] }
+            id: { type: string }
+            name: { type: string }
+        resource:
+          type: object
+          properties:
+            type: { type: string }
+            id: { type: string }
+            name: { type: string }
+        timestamp: { type: string, format: date-time }
+        metadata: { type: object, description: "Event-specific data" }
+
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded, down] }
+        version: { type: string }
+        database: { type: string, enum: [ok, down] }
+        timestamp: { type: string, format: date-time }
