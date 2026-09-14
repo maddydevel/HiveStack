@@ -1,0 +1,10 @@
+openapi: "3.0.3"
+info:
+  title: HiveStack API
+  version: 0.1.0
+  description: REST API for HiveStack virtualization management.
+servers:
+  - url: http://localhost:8080/api
+    description: Local development
+paths: {}
+components: {}
