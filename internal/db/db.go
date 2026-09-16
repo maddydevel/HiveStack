@@ -1,173 +1,122 @@
-// Package db provides the PostgreSQL connection pool, schema migrations,
-// and repository access for HiveStack Manager.
+// Package db provides the database connection pool and schema management for HiveStack.
 package db
 
 import (
-	"context"
-	"embed"
-	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
-	"time"
+    "context"
+    "fmt"
+    "time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+    "github.com/jackc/pgx/v5"
+    "github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed migrations/*.sql
-var embeddedMigrations embed.FS
-
-// DB wraps a PostgreSQL connection pool.
+// DB wraps a pgxpool connection pool.
 type DB struct {
-	Pool *pgxpool.Pool
+    Pool *pgxpool.Pool
 }
 
-// Open opens a PostgreSQL connection pool for dsn and verifies connectivity.
+// Open creates a connection pool and verifies connectivity.
 func Open(dsn string) (*DB, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("parse dsn: %w", err)
-	}
-	cfg.MaxConnLifetime = time.Hour
-	cfg.HealthCheckPeriod = 30 * time.Second
+    cfg, err := pgxpool.ParseConfig(dsn)
+    if err != nil {
+        return nil, fmt.Errorf("parse dsn: %w", err)
+    }
+    cfg.MaxConnLifetime = time.Hour
+    cfg.HealthCheckPeriod = 30 * time.Second
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("open pool: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping: %w", err)
-	}
-	return &DB{Pool: pool}, nil
+    pool, err := pgxpool.NewWithConfig(ctx, cfg)
+    if err != nil {
+        return nil, fmt.Errorf("open pool: %w", err)
+    }
+    if err := pool.Ping(ctx); err != nil {
+        pool.Close()
+        return nil, fmt.Errorf("ping: %w", err)
+    }
+    return &DB{Pool: pool}, nil
 }
 
-// Close closes the underlying connection pool.
+// Close closes the connection pool.
 func (d *DB) Close() error {
-	d.Pool.Close()
-	return nil
+    d.Pool.Close()
+    return nil
 }
 
 // Ping verifies the database connection is alive.
 func (d *DB) Ping() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return d.Pool.Ping(ctx)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    return d.Pool.Ping(ctx)
 }
 
-// Migrate applies all migrations found in dir (numbered *.sql files,
-// applied in lexical order) that have not yet been recorded in the
-// schema_migrations tracking table. If dir is empty, the migrations
-// embedded at build time from internal/db/migrations/ are used.
-//
-// Each migration runs in its own transaction; a failure stops the run
-// without recording that migration as applied, so re-running Migrate
-// after fixing the issue resumes where it left off.
-func (d *DB) Migrate(dir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	if _, err := d.Pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version     TEXT PRIMARY KEY,
-			applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-		)
-	`); err != nil {
-		return fmt.Errorf("ensure schema_migrations table: %w", err)
-	}
-
-	names, read, err := migrationFiles(dir)
-	if err != nil {
-		return err
-	}
-
-	applied := map[string]bool{}
-	rows, err := d.Pool.Query(ctx, `SELECT version FROM schema_migrations`)
-	if err != nil {
-		return fmt.Errorf("query applied migrations: %w", err)
-	}
-	for rows.Next() {
-		var v string
-		if err := rows.Scan(&v); err != nil {
-			rows.Close()
-			return fmt.Errorf("scan applied migration: %w", err)
-		}
-		applied[v] = true
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read applied migrations: %w", err)
-	}
-
-	for _, name := range names {
-		if applied[name] {
-			continue
-		}
-		sqlBytes, err := read(name)
-		if err != nil {
-			return fmt.Errorf("read migration %s: %w", name, err)
-		}
-
-		tx, err := d.Pool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("begin migration %s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
-			tx.Rollback(ctx)
-			return fmt.Errorf("apply migration %s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
-			tx.Rollback(ctx)
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit migration %s: %w", name, err)
-		}
-	}
-	return nil
+// Transaction executes fn within a database transaction.
+func (d *DB) Transaction(ctx context.Context, fn func(pgx.Tx) error) error {
+    tx, err := d.Pool.Begin(ctx)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback(ctx)
+    if err := fn(tx); err != nil {
+        return err
+    }
+    return tx.Commit(ctx)
 }
 
-// migrationFiles returns the sorted list of migration filenames and a
-// reader function for their contents, sourced from dir on disk if given,
-// or from the embedded migrations otherwise.
-func migrationFiles(dir string) ([]string, func(name string) ([]byte, error), error) {
-	if dir == "" {
-		entries, err := fs.ReadDir(embeddedMigrations, "migrations")
-		if err != nil {
-			return nil, nil, fmt.Errorf("read embedded migrations: %w", err)
-		}
-		var names []string
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
-		read := func(name string) ([]byte, error) {
-			return fs.ReadFile(embeddedMigrations, filepath.Join("migrations", name))
-		}
-		return names, read, nil
-	}
+// QueryRowContext executes a query expected to return at most one row.
+func (d *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) pgx.Row {
+    return d.Pool.QueryRow(ctx, query, args...)
+}
 
-	dirFS := os.DirFS(dir)
-	entries, err := fs.ReadDir(dirFS, ".")
-	if err != nil {
-		return nil, nil, fmt.Errorf("read migrations dir %s: %w", dir, err)
-	}
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	read := func(name string) ([]byte, error) {
-		return fs.ReadFile(dirFS, name)
-	}
-	return names, read, nil
+// QueryContext executes a query returning multiple rows.
+func (d *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error) {
+    return d.Pool.Query(ctx, query, args...)
+}
+
+// ExecContext executes a query that doesn't return rows.
+func (d *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (any, error) {
+    return d.Pool.Exec(ctx, query, args...)
+}
+
+// Begin starts a new transaction.
+func (d *DB) Begin(ctx context.Context) (pgx.Tx, error) {
+    return d.Pool.Begin(ctx)
+}
+
+// NewRecord creates a new database record returning its auto-generated ID.
+func NewRecord(ctx context.Context, tx pgx.Tx, table string, fields map[string]interface{}) (string, error) {
+    if len(fields) == 0 {
+        return "", fmt.Errorf("no fields provided")
+    }
+    cols := make([]string, 0, len(fields))
+    vals := make([]string, 0, len(fields))
+    args := make([]interface{}, 0, len(fields))
+    i := 1
+    for col, val := range fields {
+        cols = append(cols, col)
+        vals = append(vals, fmt.Sprintf("$%d", i))
+        args = append(args, val)
+        i++
+    }
+    query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING id",
+        table, joinStrings(cols, ","), joinStrings(vals, ","))
+    var id string
+    err := tx.QueryRow(ctx, query, args...).Scan(&id)
+    if err != nil {
+        return "", err
+    }
+    return id, nil
+}
+
+// joinStrings joins a slice of strings with a separator.
+func joinStrings(parts []string, sep string) string {
+    if len(parts) == 0 {
+        return ""
+    }
+    result := parts[0]
+    for _, p := range parts[1:] {
+        result += sep + p
+    }
+    return result
 }

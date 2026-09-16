@@ -153,8 +153,8 @@ func ValidateToken(tokenString string) (*Claims, error) {
 
 // RequireAuth is middleware that extracts and validates a JWT from the
 // Authorization header. On success it stores the Claims in the request context.
-func RequireAuth(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
         auth := r.Header.Get("Authorization")
         if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
             writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized", "code": "UNAUTHORIZED"})
@@ -167,8 +167,8 @@ func RequireAuth(next http.Handler) http.Handler {
             return
         }
         ctx := context.WithValue(r.Context(), claimsContextKey{}, claims)
-        next.ServeHTTP(w, r.WithContext(ctx))
-    })
+        next(w, r.WithContext(ctx))
+    }
 }
 
 // claimsContextKey is the context key for stored JWT claims.

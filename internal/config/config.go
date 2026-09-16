@@ -8,15 +8,7 @@ import (
     "github.com/spf13/viper"
 )
 
-// NodeConfig holds the HiveStack Node Agent configuration.
-type NodeConfig struct {
-    ManagerAddress    string `mapstructure:"manager_address"`
-    NodeID            string `mapstructure:"node_id"`
-    HeartbeatInterval string `mapstructure:"heartbeat_interval"`
-    LibvirtURI        string `mapstructure:"libvirt_uri"`
-}
-
-// ServerConfig holds the API server configuration.
+// ServerConfig holds the API server co...[truncated]
 type ServerConfig struct {
     Host        string         `mapstructure:"host"`
     Port        int            `mapstructure:"port"`
