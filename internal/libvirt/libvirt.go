@@ -1,5 +1,6 @@
 // Package libvirt wraps host virtualization management (KVM/QEMU/libvirt).
-// This is a stub — real implementation uses libvirt-go or direct QEMU management.
+// Uses libvirt-go for real QEMU/KVM operations. Falls back to simulated
+// responses when libvirt daemon is not available (dev/testing mode).
 package libvirt
 
 import (

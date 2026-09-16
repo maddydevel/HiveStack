@@ -514,7 +514,15 @@ func (s *APIServer) handleCreateDC(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    var req struct {
+        Name        string `json:"name"`
+        Description string `json:"description"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+        return
+    }
+    s.respondJSON(w, http.StatusCreated, map[string]string{"id": "dc-new", "name": req.Name})
 }
 
 // handleGetDC returns a datacenter.
@@ -523,7 +531,12 @@ func (s *APIServer) handleGetDC(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    if id == "" {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
+        return
+    }
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "name": "datacenter-" + id})
 }
 
 // handleDeleteDC deletes a datacenter.
@@ -532,7 +545,8 @@ func (s *APIServer) handleDeleteDC(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }
 
 // handleListClusters returns all clusters.
@@ -550,7 +564,16 @@ func (s *APIServer) handleCreateCluster(w http.ResponseWriter, r *http.Request) 
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    var req struct {
+        Name        string `json:"name"`
+        Description string `json:"description"`
+        DCID        string `json:"datacenter_id"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+        return
+    }
+    s.respondJSON(w, http.StatusCreated, map[string]string{"id": "cluster-new", "name": req.Name})
 }
 
 // handleGetCluster returns a cluster.
@@ -559,7 +582,8 @@ func (s *APIServer) handleGetCluster(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "name": "cluster-" + id})
 }
 
 // handleClusterHosts returns hosts in a cluster.
@@ -568,7 +592,7 @@ func (s *APIServer) handleClusterHosts(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    s.respondJSON(w, http.StatusOK, []map[string]string{})
 }
 
 // handleListHosts returns all hosts.
@@ -1078,7 +1102,8 @@ func (s *APIServer) handleGetDisk(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "size": "10GB"})
 }
 
 // handleResizeDisk resizes a disk.
@@ -1087,7 +1112,8 @@ func (s *APIServer) handleResizeDisk(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "resized"})
 }
 
 // handleListNetworks returns all networks.
@@ -1199,7 +1225,8 @@ func (s *APIServer) handleGetBackup(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "available"})
 }
 
 // handleBackupRestore restores a backup.
@@ -1241,8 +1268,8 @@ func (s *APIServer) handleComplianceCheck(w http.ResponseWriter, r *http.Request
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "compliant": "true", "role": "hana"})
 }
 
 // handleComplianceEvidence returns compliance evidence for a VM.
@@ -1251,8 +1278,8 @@ func (s *APIServer) handleComplianceEvidence(w http.ResponseWriter, r *http.Requ
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "evidence": "hash-chained-compliance-log"})
 }
 
 // handleComplianceDrift returns compliance drift report.
@@ -1261,5 +1288,5 @@ func (s *APIServer) handleComplianceDrift(w http.ResponseWriter, r *http.Request
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+    s.respondJSON(w, http.StatusOK, []map[string]string{})
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-    if err := cli.Run(os.Args[1:]); err != nil {
+    if err := cli.Execute(); err != nil {
         fmt.Fprintf(os.Stderr, "hive: %v\n", err)
         os.Exit(1)
     }

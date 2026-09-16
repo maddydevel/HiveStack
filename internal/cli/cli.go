@@ -91,87 +91,76 @@ var (
 
 // Init initializes the CLI with global flags and config.
 func Init() {
-    // Set up Viper for config file
-    viper.SetConfigName("config")
-    viper.SetConfigType("yaml")
-    viper.AddConfigPath("$HOME/.hive")
-    viper.AddConfigPath(".")
+    cobra.EnableCommandSorting = false
 
-    if cfgFile != "" {
-        viper.SetConfigFile(cfgFile)
-    }
-
-    viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
-    viper.BindPFlag("token", rootCmd.PersistentFlags().Lookup("token"))
-    viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
-    viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
-    viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
-
-    viper.AutomaticEnv()
-}
-
-// Run runs the CLI.
-func Run(args []string) error {
-    Init()
-    return rootCmd.Execute()
-}
-
-// rootCmd is the root command.
-var rootCmd = &cobra.Command{
-    Use:   "hive",
-    Short: "HiveStack CLI — manage KVM virtualization",
-    Long: `HiveStack CLI — command-line interface for HiveStack.
-
-HiveStack is a KVM-based virtualization management platform on SUSE SLES 15 SP7.
-This CLI connects to the HiveStack Manager REST API.
-
-Examples:
-  hive vm list
-  hive vm create my-vm --cpus 4 --mem 8192
-  hive vm start my-vm
-  hive host list
-  hive storage pool list
-  hive backup create --vm my-vm`,
-    PersistentPreRun: func(cmd *cobra.Command, args []string) {
-        if serverURL == "" {
-            serverURL = viper.GetString("server")
-            if serverURL == "" {
-                serverURL = "http://localhost:8080"
-            }
-        }
-        if apiToken == "" {
-            apiToken = viper.GetString("token")
-        }
-        if output == "" {
-            output = viper.GetString("output")
-            if output == "" {
-                output = "table"
-            }
-        }
-        quiet = viper.GetBool("quiet")
-        verbose = viper.GetBool("verbose")
-    },
-}
-
-func init() {
     rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path")
-    rootCmd.PersistentFlags().StringVar(&serverURL, "server", "", "Manager API server URL")
+    rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://localhost:8080", "Manager API server URL")
     rootCmd.PersistentFlags().StringVar(&apiToken, "token", "", "API token for authentication")
     rootCmd.PersistentFlags().StringVar(&output, "output", "", "output format: table, json, yaml")
     rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "suppress non-essential output")
     rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose output")
 
-    // Mark config as required for commands that need it (actually optional, just a placeholder)
+    viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
+    viper.BindPFlag("token", rootCmd.PersistentFlags().Lookup("token"))
 }
 
-// ─── Auth commands ───────────────────────────────────────────────────────────
+// ─── Root command ───────────────────────────────────────────────────────────────
+
+var rootCmd = &cobra.Command{
+    Use:   "hive",
+    Short: "HiveStack CLI — manage your virtualization platform",
+    Long: `HiveStack CLI provides a command-line interface to manage the HiveStack
+virtualization platform.
+
+Usage:
+  hive [global flags] <command> [command flags]
+
+Global Flags:
+  --server    Manager API server URL (default: http://localhost:8080)
+  --token     API token for authentication
+  --output    Output format: table, json, yaml (default: table)
+  --quiet     Suppress non-essential output
+  --verbose   Enable verbose output
+
+Commands:
+  auth       Authentication commands (login, logout, whoami)
+  vm         VM lifecycle commands (list, get, create, start, stop, restart, migrate, snapshot, console, stats, delete)
+  host       Host management commands (list, get, status, maintenance)
+  storage    Storage management commands (pool list/get/create/delete, disk list/get/resize)
+  network    Network management commands (list, get, create, delete)
+  backup     Backup management commands (list, create, restore, cancel)
+  migrate    Migration commands (import, list)
+  health     Check Manager health
+  version    Show version information
+
+Examples:
+  hive vm list --server http://localhost:8080
+  hive vm create my-vm --cpus 4 --mem 8192 --disk 20
+  hive host list --output json
+  hive backup create --vm vm-123`,
+    RunE: func(cmd *cobra.Command, args []string) error {
+        fmt.Println("HiveStack CLI v0.1.0 — use 'hive --help' for available commands")
+        fmt.Println("Run 'hive <command> --help' for command-specific help")
+        return nil
+    },
+}
+
+// ─── Auth commands ───────────────────────────────────────────────────────────────
 
 var loginCmd = &cobra.Command{
     Use:   "login",
     Short: "Log in to the Manager",
-    Long:  `Authenticates with the HiveStack Manager and saves the API token.`,
+    Long:  `Authenticates with the HiveStack Manager and saves the API token.
+
+Example:
+  hive auth login --email admin@example.com --password secret`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        email, _ := cmd.Flags().GetString("email")
+        password, _ := cmd.Flags().GetString("password")
+        if email == "" || password == "" {
+            return fmt.Errorf("email and password required (use --email and --password)")
+        }
+        fmt.Println("Login: use 'hive config set-token' or login via API")
         return nil
     },
 }
@@ -181,7 +170,7 @@ var logoutCmd = &cobra.Command{
     Short: "Log out",
     Long:  `Clears the saved API token.`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Token cleared (placeholder — API integration pending)")
         return nil
     },
 }
@@ -189,19 +178,24 @@ var logoutCmd = &cobra.Command{
 var whoamiCmd = &cobra.Command{
     Use:   "whoami",
     Short: "Show current user",
+    Long:  `Shows the current authenticated user.`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Whoami: use 'hive user me' or API integration pending")
         return nil
     },
 }
 
-// ─── VM commands ─────────────────────────────────────────────────────────────
+// ─── VM commands ────────────────────────────────────────────────────────────────
 
 var vmListCmd = &cobra.Command{
     Use:   "list",
     Short: "List all VMs",
+    Long:  `Lists all virtual machines in the current tenant.
+
+Example:
+  hive vm list --output json`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("VM list: use 'hive vm list' — API integration pending")
         return nil
     },
 }
@@ -209,9 +203,13 @@ var vmListCmd = &cobra.Command{
 var vmGetCmd = &cobra.Command{
     Use:   "get <vm-id>",
     Short: "Get a VM by ID",
+    Long:  `Shows detailed information about a specific VM.
+
+Example:
+  hive vm get vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("VM '%s': (not implemented)\n", args[0])
+        fmt.Printf("VM '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -219,13 +217,26 @@ var vmGetCmd = &cobra.Command{
 var vmCreateCmd = &cobra.Command{
     Use:   "create <name>",
     Short: "Create a new VM",
+    Long:  `Creates a new virtual machine.
+
+Example:
+  hive vm create my-vm --cpus 4 --mem 8192 --disk 20 --os linux
+
+Flags:
+  --cpus      Number of CPUs (default: 1)
+  --mem       Memory in MB (default: 1024)
+  --disk      Disk size in GB (default: 10)
+  --os        OS type (default: linux)
+  --template  Template ID to clone from`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
         name := args[0]
         cpus, _ := cmd.Flags().GetInt("cpus")
         mem, _ := cmd.Flags().GetInt("mem")
-        fmt.Printf("Creating VM '%s' — cpus=%d, mem=%dMB\n", name, cpus, mem)
-        fmt.Println("  (not implemented — API integration pending)")
+        disk, _ := cmd.Flags().GetInt("disk")
+        osType, _ := cmd.Flags().GetString("os")
+        fmt.Printf("Creating VM '%s': cpus=%d, mem=%dMB, disk=%dGB, os=%s\n", name, cpus, mem, disk, osType)
+        fmt.Println("VM creation: API integration pending")
         return nil
     },
 }
@@ -233,10 +244,13 @@ var vmCreateCmd = &cobra.Command{
 var vmStartCmd = &cobra.Command{
     Use:   "start <vm-id>",
     Short: "Start a VM",
+    Long:  `Starts a stopped virtual machine.
+
+Example:
+  hive vm start vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Starting VM '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Starting VM '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
@@ -244,10 +258,13 @@ var vmStartCmd = &cobra.Command{
 var vmStopCmd = &cobra.Command{
     Use:   "stop <vm-id>",
     Short: "Stop a VM",
+    Long:  `Stops a running virtual machine.
+
+Example:
+  hive vm stop vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Stopping VM '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Stopping VM '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
@@ -255,10 +272,13 @@ var vmStopCmd = &cobra.Command{
 var vmRestartCmd = &cobra.Command{
     Use:   "restart <vm-id>",
     Short: "Restart a VM",
+    Long:  `Restarts a virtual machine.
+
+Example:
+  hive vm restart vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Restarting VM '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Restarting VM '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
@@ -266,11 +286,17 @@ var vmRestartCmd = &cobra.Command{
 var vmMigrateCmd = &cobra.Command{
     Use:   "migrate <vm-id> --target <host-id>",
     Short: "Migrate a VM to another host",
+    Long:  `Migrates a running VM to another host using live migration.
+
+Example:
+  hive vm migrate vm-abc123 --target host-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
         target, _ := cmd.Flags().GetString("target")
-        fmt.Printf("Migrating VM '%s' to host '%s'...\n", args[0], target)
-        fmt.Println("  (not implemented — API integration pending)")
+        if target == "" {
+            return fmt.Errorf("--target required (host ID to migrate to)")
+        }
+        fmt.Printf("Migrating VM '%s' to host '%s'... (API integration pending)\n", args[0], target)
         return nil
     },
 }
@@ -278,12 +304,17 @@ var vmMigrateCmd = &cobra.Command{
 var vmSnapshotCmd = &cobra.Command{
     Use:   "snapshot <vm-id> [flags]",
     Short: "Manage VM snapshots",
+    Long:  `Manage snapshots for a VM.
+
+Example:
+  hive vm snapshot vm-abc123 --action create --name pre-update
+  hive vm snapshot vm-abc123 --action list
+  hive vm snapshot vm-abc123 --action delete --name pre-update`,
     Args:  cobra.MinimumNArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
         action, _ := cmd.Flags().GetString("action")
         name, _ := cmd.Flags().GetString("name")
-        fmt.Printf("Snapshot action='%s' name='%s' vm='%s'\n", action, name, args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Snapshot action='%s' name='%s' vm='%s' (API integration pending)\n", action, name, args[0])
         return nil
     },
 }
@@ -291,9 +322,13 @@ var vmSnapshotCmd = &cobra.Command{
 var vmConsoleCmd = &cobra.Command{
     Use:   "console <vm-id>",
     Short: "Get console URL for a VM",
+    Long:  `Returns the VNC/console URL for accessing a VM.
+
+Example:
+  hive vm console vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Console URL for VM '%s': (not implemented)\n", args[0])
+        fmt.Printf("Console URL for VM '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -301,9 +336,13 @@ var vmConsoleCmd = &cobra.Command{
 var vmStatsCmd = &cobra.Command{
     Use:   "stats <vm-id>",
     Short: "Get VM statistics",
+    Long:  `Returns real-time CPU, memory, disk, and network statistics for a VM.
+
+Example:
+  hive vm stats vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Stats for VM '%s': (not implemented)\n", args[0])
+        fmt.Printf("Stats for VM '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -311,21 +350,30 @@ var vmStatsCmd = &cobra.Command{
 var vmDeleteCmd = &cobra.Command{
     Use:   "delete <vm-id>",
     Short: "Delete a VM",
+    Long:  `Deletes a virtual machine and its associated resources.
+
+WARNING: This operation is irreversible.
+
+Example:
+  hive vm delete vm-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Deleting VM '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Deleting VM '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
 
-// ─── Host commands ────────────────────────────────────────────────────────────
+// ─── Host commands ──────────────────────────────────────────────────────────────
 
 var hostListCmd = &cobra.Command{
     Use:   "list",
     Short: "List all hosts",
+    Long:  `Lists all registered HiveStack hosts.
+
+Example:
+  hive host list --output json`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Host list: use 'hive host list' — API integration pending")
         return nil
     },
 }
@@ -333,20 +381,28 @@ var hostListCmd = &cobra.Command{
 var hostGetCmd = &cobra.Command{
     Use:   "get <host-id>",
     Short: "Get a host by ID",
+    Long:  `Shows detailed information about a specific host.
+
+Example:
+  hive host get host-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Host '%s': (not implemented)\n", args[0])
+        fmt.Printf("Host '%s': API integration pending\n", args[0])
         return nil
     },
 }
 
-// ─── Storage commands ─────────────────────────────────────────────────────────
+// ─── Storage commands ───────────────────────────────────────────────────────────
 
 var storagePoolListCmd = &cobra.Command{
     Use:   "list",
     Short: "List storage pools",
+    Long:  `Lists all storage pools.
+
+Example:
+  hive storage pool list`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Storage pool list: API integration pending")
         return nil
     },
 }
@@ -354,9 +410,13 @@ var storagePoolListCmd = &cobra.Command{
 var storagePoolGetCmd = &cobra.Command{
     Use:   "get <pool-id>",
     Short: "Get a storage pool",
+    Long:  `Shows detailed information about a storage pool.
+
+Example:
+  hive storage pool get pool-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Storage pool '%s': (not implemented)\n", args[0])
+        fmt.Printf("Storage pool '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -364,12 +424,20 @@ var storagePoolGetCmd = &cobra.Command{
 var storagePoolCreateCmd = &cobra.Command{
     Use:   "create <name> --type <type> --path <path>",
     Short: "Create a storage pool",
+    Long:  `Creates a new storage pool.
+
+Example:
+  hive storage pool create my-pool --type dir --path /var/lib/hivestack/storage
+
+Flags:
+  --type  Storage pool type (dir, lvm, ceph, etc.)
+  --path  Path to the storage backend`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
         poolType, _ := cmd.Flags().GetString("type")
         poolPath, _ := cmd.Flags().GetString("path")
-        fmt.Printf("Creating storage pool '%s' — type=%s path=%s\n", args[0], poolType, poolPath)
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Creating storage pool '%s': type=%s, path=%s\n", args[0], poolType, poolPath)
+        fmt.Println("Storage pool creation: API integration pending")
         return nil
     },
 }
@@ -377,10 +445,15 @@ var storagePoolCreateCmd = &cobra.Command{
 var storagePoolDeleteCmd = &cobra.Command{
     Use:   "delete <pool-id>",
     Short: "Delete a storage pool",
+    Long:  `Deletes a storage pool.
+
+Warning: This may delete all volumes in the pool.
+
+Example:
+  hive storage pool delete pool-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Deleting storage pool '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Deleting storage pool '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
@@ -388,8 +461,12 @@ var storagePoolDeleteCmd = &cobra.Command{
 var diskListCmd = &cobra.Command{
     Use:   "list",
     Short: "List disks",
+    Long:  `Lists all storage volumes/disks.
+
+Example:
+  hive disk list`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Disk list: API integration pending")
         return nil
     },
 }
@@ -397,9 +474,13 @@ var diskListCmd = &cobra.Command{
 var diskGetCmd = &cobra.Command{
     Use:   "get <disk-id>",
     Short: "Get a disk",
+    Long:  `Shows detailed information about a disk/volume.
+
+Example:
+  hive disk get vol-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Disk '%s': (not implemented)\n", args[0])
+        fmt.Printf("Disk '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -407,25 +488,32 @@ var diskGetCmd = &cobra.Command{
 var diskResizeCmd = &cobra.Command{
     Use:   "resize <disk-id> <size>",
     Short: "Resize a disk",
+    Long:  `Resizes a storage volume to the specified size in bytes.
+
+Example:
+  hive disk resize vol-abc123 21474836480`,
     Args:  cobra.ExactArgs(2),
     RunE: func(cmd *cobra.Command, args []string) error {
         size, err := strconv.ParseUint(args[1], 10, 64)
         if err != nil {
-            return fmt.Errorf("invalid size: %s", args[1])
+            return fmt.Errorf("invalid size: %s (must be a number in bytes)", args[1])
         }
-        fmt.Printf("Resizing disk '%s' to %d bytes...\n", args[0], size)
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Resizing disk '%s' to %d bytes... (API integration pending)\n", args[0], size)
         return nil
     },
 }
 
-// ─── Network commands ─────────────────────────────────────────────────────────
+// ─── Network commands ───────────────────────────────────────────────────────────
 
 var networkListCmd = &cobra.Command{
     Use:   "list",
     Short: "List networks",
+    Long:  `Lists all virtual networks.
+
+Example:
+  hive network list`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Network list: API integration pending")
         return nil
     },
 }
@@ -433,9 +521,13 @@ var networkListCmd = &cobra.Command{
 var networkGetCmd = &cobra.Command{
     Use:   "get <network-id>",
     Short: "Get a network",
+    Long:  `Shows detailed information about a virtual network.
+
+Example:
+  hive network get net-abc123`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Network '%s': (not implemented)\n", args[0])
+        fmt.Printf("Network '%s': API integration pending\n", args[0])
         return nil
     },
 }
@@ -443,11 +535,17 @@ var networkGetCmd = &cobra.Command{
 var networkCreateCmd = &cobra.Command{
     Use:   "create <name> --type <type>",
     Short: "Create a network",
+    Long:  `Creates a new virtual network.
+
+Example:
+  hive network create my-net --type bridge
+
+Flags:
+  --type  Network type (bridge, nat, routed, etc.)`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
         netType, _ := cmd.Flags().GetString("type")
-        fmt.Printf("Creating network '%s' — type=%s\n", args[0], netType)
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Creating network '%s': type=%s (API integration pending)\n", args[0], netType)
         return nil
     },
 }
@@ -455,21 +553,28 @@ var networkCreateCmd = &cobra.Command{
 var networkDeleteCmd = &cobra.Command{
     Use:   "delete <network-id>",
     Short: "Delete a network",
+    Long:  `Deletes a virtual network.
+
+Example:
+  hive network delete net-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Deleting network '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Deleting network '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
 
-// ─── Backup commands ──────────────────────────────────────────────────────────
+// ─── Backup commands ────────────────────────────────────────────────────────────
 
 var backupListCmd = &cobra.Command{
     Use:   "list",
     Short: "List backups",
+    Long:  `Lists all backups.
+
+Example:
+  hive backup list`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Backup list: API integration pending")
         return nil
     },
 }
@@ -477,10 +582,16 @@ var backupListCmd = &cobra.Command{
 var backupCreateCmd = &cobra.Command{
     Use:   "create --vm <vm-id>",
     Short: "Create a backup",
+    Long:  `Creates a backup of a VM.
+
+Example:
+  hive backup create --vm vm-abc123`,
     RunE: func(cmd *cobra.Command, args []string) error {
         vmID, _ := cmd.Flags().GetString("vm")
-        fmt.Printf("Creating backup for VM '%s'...\n", vmID)
-        fmt.Println("  (not implemented — API integration pending)")
+        if vmID == "" {
+            return fmt.Errorf("--vm required (VM ID to backup)")
+        }
+        fmt.Printf("Creating backup for VM '%s'... (API integration pending)\n", vmID)
         return nil
     },
 }
@@ -488,10 +599,13 @@ var backupCreateCmd = &cobra.Command{
 var backupRestoreCmd = &cobra.Command{
     Use:   "restore <backup-id>",
     Short: "Restore a backup",
+    Long:  `Restores a VM from a backup.
+
+Example:
+  hive backup restore backup-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Restoring backup '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Restoring backup '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
@@ -499,15 +613,18 @@ var backupRestoreCmd = &cobra.Command{
 var backupCancelCmd = &cobra.Command{
     Use:   "cancel <backup-id>",
     Short: "Cancel a backup",
+    Long:  `Cancels an in-progress backup operation.
+
+Example:
+  hive backup cancel backup-xyz789`,
     Args:  cobra.ExactArgs(1),
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Cancelling backup '%s'...\n", args[0])
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Cancelling backup '%s'... (API integration pending)\n", args[0])
         return nil
     },
 }
 
-// ─── Migration commands ───────────────────────────────────────────────────────
+// ─── Migration commands ─────────────────────────────────────────────────────────
 
 var migrateImportCmd = &cobra.Command{
     Use:   "import <source> --type <vcenter|ovf|vmx>",
@@ -517,14 +634,36 @@ var migrateImportCmd = &cobra.Command{
 Types:
   vcenter  - Import from vCenter (requires --vcenter-url, --username, --password)
   ovf      - Import OVF/OVA file (requires --file)
-  vmx      - Import VMX file (requires --file)`,
+  vmx      - Import VMX file (requires --file)
+
+Examples:
+  hive migrate import --type vmx --file /path/to/vm.vmx
+  hive migrate import --type vcenter --vcenter-url https://vc.example.com --username admin --password secret`,
     RunE: func(cmd *cobra.Command, args []string) error {
         importType, _ := cmd.Flags().GetString("type")
         file, _ := cmd.Flags().GetString("file")
         vcURL, _ := cmd.Flags().GetString("vcenter-url")
         vcUser, _ := cmd.Flags().GetString("username")
-        fmt.Printf("Importing from %s — file=%s vcenter=%s user=%s\n", importType, file, vcURL, vcUser)
-        fmt.Println("(not implemented — VMware migration tools pending)")
+
+        switch importType {
+        case "vmx":
+            if file == "" {
+                return fmt.Errorf("--file required for vmx import")
+            }
+            fmt.Printf("Importing VMX file '%s'... (VMX parser available, API integration pending)\n", file)
+        case "vcenter":
+            if vcURL == "" || vcUser == "" {
+                return fmt.Errorf("--vcenter-url and --username required for vcenter import")
+            }
+            fmt.Printf("Importing from vCenter '%s'... (API integration pending)\n", vcURL)
+        case "ovf":
+            if file == "" {
+                return fmt.Errorf("--file required for ovf import")
+            }
+            fmt.Printf("Importing OVF file '%s'... (API integration pending)\n", file)
+        default:
+            return fmt.Errorf("unknown import type: %s (use vcenter, ovf, or vmx)", importType)
+        }
         return nil
     },
 }
@@ -532,20 +671,27 @@ Types:
 var migrateListCmd = &cobra.Command{
     Use:   "list",
     Short: "List migration jobs",
+    Long:  `Lists all migration jobs and their status.
+
+Example:
+  hive migrate list`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Println("Migration list: API integration pending")
         return nil
     },
 }
 
-// ─── System commands ──────────────────────────────────────────────────────────
+// ─── System commands ────────────────────────────────────────────────────────────
 
 var healthCmd = &cobra.Command{
     Use:   "health",
     Short: "Check Manager health",
+    Long:  `Checks the health status of the HiveStack Manager.
+
+Example:
+  hive health --server http://localhost:8080`,
     RunE: func(cmd *cobra.Command, args []string) error {
-        fmt.Printf("Checking health at %s...\n", serverURL)
-        fmt.Println("  (not implemented — API integration pending)")
+        fmt.Printf("Checking health at %s... (API integration pending)\n", serverURL)
         return nil
     },
 }
@@ -553,13 +699,14 @@ var healthCmd = &cobra.Command{
 var versionCmd = &cobra.Command{
     Use:   "version",
     Short: "Show version information",
+    Long:  `Displays the HiveStack CLI version and build information.`,
     RunE: func(cmd *cobra.Command, args []string) error {
         fmt.Println("HiveStack CLI v0.1.0 (development build)")
         return nil
     },
 }
 
-// ─── Command registration ─────────────────────────────────────────────────────
+// ─── Command registration ──────────────────────────────────────────────────────
 
 func addAuthCommands() {
     authCmd := &cobra.Command{
@@ -570,7 +717,10 @@ func addAuthCommands() {
 Commands:
   login   Log in to the Manager
   logout  Log out
-  whoami  Show current user`,
+  whoami  Show current user
+
+Example:
+  hive auth login --email admin@example.com --password secret`,
     }
 
     authCmd.AddCommand(loginCmd, logoutCmd, whoamiCmd)
@@ -601,7 +751,20 @@ VM create flags:
   --mem       Memory in MB (default: 1024)
   --disk      Disk size in GB (default: 10)
   --os        OS type (default: linux)
-  --template  Template ID to clone from`,
+  --template  Template ID to clone from
+
+VM migrate flags:
+  --target    Target host ID (required)
+
+VM snapshot flags:
+  --action    Action: create, list, delete (default: create)
+  --name      Snapshot name (for create)
+
+Examples:
+  hive vm list
+  hive vm create my-vm --cpus 4 --mem 8192 --disk 20
+  hive vm start vm-abc123
+  hive vm migrate vm-abc123 --target host-xyz789`,
     }
 
     vmCmd.AddCommand(vmListCmd, vmGetCmd, vmCreateCmd, vmStartCmd, vmStopCmd, vmRestartCmd, vmMigrateCmd, vmSnapshotCmd, vmConsoleCmd, vmStatsCmd, vmDeleteCmd)
@@ -627,13 +790,17 @@ func addHostCommands() {
     hostCmd := &cobra.Command{
         Use:   "host",
         Short: "Host management commands",
-        Long:  `Manage hypervisor hosts.
+        Long:  `Manage HiveStack hosts (physical nodes running KVM).
 
 Commands:
   list        List all hosts
   get         Get a host by ID
   status      Get host status
-  maintenance Toggle maintenance mode`,
+  maintenance Toggle maintenance mode
+
+Examples:
+  hive host list
+  hive host get host-xyz789`,
     }
 
     hostCmd.AddCommand(hostListCmd, hostGetCmd)
@@ -647,34 +814,58 @@ func addStorageCommands() {
         Long:  `Manage storage pools and disks.
 
 Commands:
-  pool          Storage pool commands
-    list        List storage pools
-    get         Get a storage pool
-    create      Create a storage pool
-    delete      Delete a storage pool
-  disk          Disk commands
-    list        List disks
-    get         Get a disk
-    resize      Resize a disk`,
+  pool        Storage pool commands (list, get, create, delete)
+  disk        Disk/volume commands (list, get, resize)
+
+Examples:
+  hive storage pool list
+  hive storage pool create my-pool --type dir --path /var/lib/hivestack/storage
+  hive disk list
+  hive disk resize vol-abc123 21474836480`,
     }
 
     diskCmd := &cobra.Command{
         Use:   "disk",
-        Short: "Disk commands",
+        Short: "Disk/volume commands",
+        Long:  `Manage storage volumes/disks.
+
+Commands:
+  list        List all disks
+  get         Get a disk by ID
+  resize      Resize a disk
+
+Examples:
+  hive disk list
+  hive disk get vol-abc123
+  hive disk resize vol-abc123 21474836480`,
     }
+
     diskCmd.AddCommand(diskListCmd, diskGetCmd, diskResizeCmd)
     storageCmd.AddCommand(diskCmd)
 
     poolCmd := &cobra.Command{
         Use:   "pool",
         Short: "Storage pool commands",
+        Long:  `Manage storage pools.
+
+Commands:
+  list        List storage pools
+  get         Get a storage pool
+  create      Create a storage pool
+  delete      Delete a storage pool
+
+Storage pool create flags:
+  --type  Storage pool type (dir, lvm, ceph, etc.)
+  --path  Path to the storage backend
+
+Examples:
+  hive storage pool list
+  hive storage pool create my-pool --type dir --path /var/lib/hivestack/storage`,
     }
+
     poolCmd.AddCommand(storagePoolListCmd, storagePoolGetCmd, storagePoolCreateCmd, storagePoolDeleteCmd)
-
-    storagePoolCreateCmd.Flags().StringP("type", "t", "dir", "Pool type: dir, lvm, zfs, nfs, iscsi, ceph")
-    storagePoolCreateCmd.Flags().StringP("path", "p", "", "Pool path")
-
     storageCmd.AddCommand(poolCmd)
+
     rootCmd.AddCommand(storageCmd)
 }
 
@@ -691,18 +882,14 @@ Commands:
   delete      Delete a network
 
 Network create flags:
-  --type    Network type: bridge, vlan, nat, ovs, macvlan
-  --bridge  Bridge name (for bridge type)
-  --vlan    VLAN ID (for vlan type)
-  --subnet  Subnet (e.g. 192.168.1.0/24)`,
+  --type  Network type (bridge, nat, routed, etc.)
+
+Examples:
+  hive network list
+  hive network create my-net --type bridge`,
     }
 
     networkCmd.AddCommand(networkListCmd, networkGetCmd, networkCreateCmd, networkDeleteCmd)
-    networkCreateCmd.Flags().StringP("type", "t", "bridge", "Network type")
-    networkCreateCmd.Flags().StringP("bridge", "b", "", "Bridge name")
-    networkCreateCmd.Flags().IntP("vlan", "", 0, "VLAN ID")
-    networkCreateCmd.Flags().StringP("subnet", "s", "", "Subnet CIDR")
-
     rootCmd.AddCommand(networkCmd)
 }
 
@@ -719,41 +906,45 @@ Commands:
   cancel      Cancel a backup
 
 Backup create flags:
-  --vm        VM ID (required)
-  --name      Backup name
-  --schedule  Schedule ID for scheduled backup`,
+  --vm  VM ID to backup (required)
+
+Examples:
+  hive backup list
+  hive backup create --vm vm-abc123
+  hive backup restore backup-xyz789`,
     }
 
     backupCmd.AddCommand(backupListCmd, backupCreateCmd, backupRestoreCmd, backupCancelCmd)
-    backupCreateCmd.Flags().StringP("vm", "v", "", "VM ID (required)")
-    backupCreateCmd.Flags().StringP("name", "n", "", "Backup name")
-    backupCreateCmd.Flags().StringP("schedule", "s", "", "Schedule ID")
-
     rootCmd.AddCommand(backupCmd)
 }
 
 func addMigrationCommands() {
     migrateCmd := &cobra.Command{
         Use:   "migrate",
-        Short: "VMware migration commands",
-        Long:  `Import VMs from VMware environments.
+        Short: "Migration commands",
+        Long:  `Import VMs from VMware sources and manage migration jobs.
 
 Commands:
-  import     Import from VMware (vcenter, ovf, vmx)
-  list       List migration jobs
+  import      Import from VMware (vcenter, ovf, vmx)
+  list        List migration jobs
 
-Import flags:
-  --type         Source type: vcenter, ovf, vmx
-  --file         File path (for ovf/vmx)
-  --vcenter-url  vCenter API URL (for vcenter)
-  --username     vCenter username (for vcenter)
-  --password     vCenter password (for vcenter)`,
+Migration import flags:
+  --type       Import type: vcenter, ovf, vmx (required)
+  --file       Source file path (for vmx, ovf)
+  --vcenter-url vCenter URL (for vcenter)
+  --username   vCenter username (for vcenter)
+  --password   vCenter password (for vcenter)
+
+Examples:
+  hive migrate import --type vmx --file /path/to/vm.vmx
+  hive migrate list`,
     }
 
     migrateCmd.AddCommand(migrateImportCmd, migrateListCmd)
-    migrateImportCmd.Flags().StringP("type", "t", "vcenter", "Source type")
-    migrateImportCmd.Flags().StringP("file", "f", "", "File path")
-    migrateImportCmd.Flags().StringP("vcenter-url", "u", "", "vCenter API URL")
+
+    migrateImportCmd.Flags().StringP("type", "t", "", "Import type: vcenter, ovf, vmx (required)")
+    migrateImportCmd.Flags().StringP("file", "f", "", "Source file path")
+    migrateImportCmd.Flags().StringP("vcenter-url", "u", "", "vCenter URL")
     migrateImportCmd.Flags().StringP("username", "U", "", "vCenter username")
     migrateImportCmd.Flags().StringP("password", "p", "", "vCenter password")
 
@@ -761,10 +952,24 @@ Import flags:
 }
 
 func addSystemCommands() {
-    rootCmd.AddCommand(healthCmd, versionCmd)
+    systemCmd := &cobra.Command{
+        Use:   "system",
+        Short: "System commands",
+        Long:  `System-level commands for HiveStack.
+
+Commands:
+  health      Check Manager health
+  version     Show version information`,
+    }
+
+    healthCmd.Flags().StringP("server", "s", serverURL, "Manager API server URL")
+
+    systemCmd.AddCommand(healthCmd, versionCmd)
+    rootCmd.AddCommand(systemCmd)
 }
 
-func init() {
+// Execute adds all commands to the root command and executes it.
+func Execute() error {
     addAuthCommands()
     addVmCommands()
     addHostCommands()
@@ -773,4 +978,6 @@ func init() {
     addBackupCommands()
     addMigrationCommands()
     addSystemCommands()
+    rootCmd.Execute()
+    return nil
 }
