@@ -3,6 +3,7 @@
 package libvirt
 
 import (
+    "context"
     "fmt"
     "sync"
 )
@@ -37,7 +38,7 @@ func (l *Libvirt) Close() error {
 }
 
 // GetHostInfo returns host CPU, memory, and disk info.
-func (l *Libvirt) GetHostInfo() (*HostInfo, error) {
+func (l *Libvirt) GetHostInfo(ctx context.Context) (*HostInfo, error) {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -51,7 +52,7 @@ func (l *Libvirt) GetHostInfo() (*HostInfo, error) {
 }
 
 // ListVMs returns all VM domains on the host.
-func (l *Libvirt) ListVMs() ([]VMInfo, error) {
+func (l *Libvirt) ListVMs(ctx context.Context) ([]VMInfo, error) {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -61,7 +62,7 @@ func (l *Libvirt) ListVMs() ([]VMInfo, error) {
 }
 
 // DefineVM defines a VM from libvirt XML.
-func (l *Libvirt) DefineVM(xml string) error {
+func (l *Libvirt) DefineVM(ctx context.Context, xml string) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -72,7 +73,7 @@ func (l *Libvirt) DefineVM(xml string) error {
 }
 
 // StartVM starts a VM by ID.
-func (l *Libvirt) StartVM(id string) error {
+func (l *Libvirt) StartVM(ctx context.Context, id string) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -82,7 +83,7 @@ func (l *Libvirt) StartVM(id string) error {
 }
 
 // StopVM stops a VM by ID.
-func (l *Libvirt) StopVM(id string) error {
+func (l *Libvirt) StopVM(ctx context.Context, id string) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -92,7 +93,7 @@ func (l *Libvirt) StopVM(id string) error {
 }
 
 // DestroyVM destroys a VM by ID.
-func (l *Libvirt) DestroyVM(id string) error {
+func (l *Libvirt) DestroyVM(ctx context.Context, id string) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -102,7 +103,7 @@ func (l *Libvirt) DestroyVM(id string) error {
 }
 
 // CreateVolume creates a storage volume on a pool.
-func (l *Libvirt) CreateVolume(pool, name string, format string, size uint64) error {
+func (l *Libvirt) CreateVolume(ctx context.Context, pool, name string, format string, size uint64) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -112,7 +113,7 @@ func (l *Libvirt) CreateVolume(pool, name string, format string, size uint64) er
 }
 
 // CreateNetwork creates a virtual network.
-func (l *Libvirt) CreateNetwork(name, bridge string) error {
+func (l *Libvirt) CreateNetwork(ctx context.Context, name, bridge string) error {
     l.mu.Lock()
     defer l.mu.Unlock()
     if !l.connected {
@@ -123,9 +124,17 @@ func (l *Libvirt) CreateNetwork(name, bridge string) error {
 
 // HostInfo holds host resource information.
 type HostInfo struct {
-    CPU     CPUInfo
-    Memory  MemoryInfo
-    Disk    DiskInfo
+    Hostname         string
+    CPU              CPUInfo
+    Memory           MemoryInfo
+    Disk             DiskInfo
+    NUMANodeCount    int
+    NUMANodes        []NumaNodeInfo
+    HugepagesTotalMB int
+    HugepagesFreeMB  int
+    StorageTotalGB   int
+    StorageFreeGB    int
+    NetworkInterfaces []string
 }
 
 // CPUInfo holds CPU information.
@@ -153,4 +162,11 @@ type VMInfo struct {
     CPUs    int
     Memory  uint64
     State   string
+}
+
+// NumaNodeInfo holds information about a single NUMA node.
+type NumaNodeInfo struct {
+    NodeID   int
+    CPUs     []int
+    MemoryMB int
 }
