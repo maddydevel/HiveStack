@@ -1,4 +1,4 @@
-// Package agent implements the HiveStack Node Agent.
+// Package node implements the HiveStack Node Agent.
 //
 // The node agent runs on each HiveStack Node (SLES 15 SP7 + KVM/QEMU/libvirt).
 // It communicates with the Manager via TLS-secured gRPC, executes VM lifecycle
@@ -32,7 +32,7 @@
 //
 //	The node agent authenticates with the Manager using a client certificate.
 //	The certificate is provisioned by the Manager during node registration.
-package agent
+package node
 
 import (
     "context"

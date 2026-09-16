@@ -1,68 +1,97 @@
-// Package node implements the HiveStack Node Agent.
+// Package main implements the HiveStack Node Agent entry point.
 //
 // The node agent runs on each HiveStack Node (SLES 15 SP7 + KVM/QEMU/libvirt).
 // It communicates with the Manager via TLS-secured gRPC, executes VM lifecycle
 // commands, reports status, and manages local storage and networking.
 //
-// Usage:
-//
-//	HiveStack Node Agent — manages KVM virtualization on a host.
-//
-//	The node agent:
-//	- Registers with the Manager on startup
-//	- Reports host status, resource usage, and VM list periodically
-//	- Executes VM lifecycle commands from the Manager (create, start, stop, migrate, etc.)
-//	- Executes live migration commands
-//	- Manages local storage and network configuration
-//	- Runs as a systemd service
-//
-// Configuration:
-//
-//	The node agent is configured via /etc/hivestack/node.yaml:
-//
-//	    managerAddress: "hivestack-manager.example.com:8443"
-//	    nodeId: "node-1"
-//	    tls:
-//	      certFile: "/etc/hivestack/tls/node.crt"
-//	      keyFile: "/etc/hivestack/tls/node.key"
-//	      caFile: "/etc/hivestack/tls/ca.crt"
-//	    libvirt:
-//	      uri: "qemu:///system"
-//	    heartbeatInterval: 30s
-//
 // Build:
 //
 //	go build -o bin/hive-node ./node/
 //
-// Install:
+// Run:
 //
-//	sudo install bin/hive-node /usr/local/bin/hive-node
-//	sudo cp contrib/systemd/hivestack-node.service /etc/systemd/system/
-//	sudo systemctl enable --now hivestack-node
-package node
+//	hive-node --config /etc/hivestack/node.yaml
+//
+// gRPC API:
+//
+//	The node agent exposes a gRPC server on localhost:9090 by default.
+//	The Manager connects to it via TLS. The agent registers with the Manager
+//	on startup and receives commands via the gRPC API.
+//
+//	The gRPC API is defined in proto/node.proto:
+//
+//	    service NodeAgent {
+//	      rpc Register (RegisterRequest) returns (RegisterResponse);
+//	      rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+//	      rpc ExecuteCommand (ExecuteCommandRequest) returns (ExecuteCommandResponse);
+//	      rpc GetStatus (GetStatusRequest) returns (GetStatusResponse);
+//	      rpc ListVMs (ListVMsRequest) returns (ListVMsResponse);
+//	    }
+//
+// Authentication:
+//
+//	The node agent authenticates with the Manager using a client certificate.
+//	The certificate is provisioned by the Manager during node registration.
+package main
 
 import (
+    "context"
+    "flag"
     "fmt"
+    "log"
     "os"
-)
+    "os/signal"
+    "syscall"
 
-// Version information
-var (
-    Version   = "0.1.0"
-    GitCommit = "unknown"
+    "github.com/maddydevel/HiveStack/internal/config"
+    hiveNode "github.com/maddydevel/HiveStack/internal/node"
 )
 
 func main() {
-    fmt.Printf("HiveStack Node Agent v%s (%s)\n", Version, GitCommit)
-    fmt.Println("Node agent not yet implemented — see internal/node/agent.go")
+    cfgPath := flag.String("config", "/etc/hivestack/node.yaml", "path to node config file")
+    showVersion := flag.Bool("version", false, "print version and exit")
+    flag.Parse()
 
-    // TODO: Implement node agent
-    // 1. Load configuration from /etc/hivestack/node.yaml
-    // 2. Establish TLS-secured gRPC connection to Manager
-    // 3. Register with Manager
-    // 4. Start heartbeat loop
-    // 5. Start command handler
-    // 6. Start status reporter
+    if *showVersion {
+        fmt.Printf("HiveStack Node Agent v0.1.0 (development build)\n")
+        os.Exit(0)
+    }
 
-    os.Exit(1)
+    log.Printf("HiveStack Node Agent starting (config: %s)", *cfgPath)
+
+    // Load configuration
+    cfg, err := config.LoadNodeConfig(*cfgPath)
+    if err != nil {
+        log.Printf("Warning: could not load config from %s: %v — using defaults", *cfgPath, err)
+        cfg = config.DefaultNodeConfig()
+    }
+
+    log.Printf("Node ID: %s", cfg.NodeID)
+    log.Printf("Manager address: %s", cfg.ManagerAddress)
+    log.Printf("Libvirt URI: %s", cfg.LibvirtURI)
+
+    // Create agent
+    agent, err := hiveNode.New(cfg)
+    if err != nil {
+        log.Fatalf("Failed to create node agent: %v", err)
+    }
+
+    // Set up graceful shutdown
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    sigChan := make(chan os.Signal, 1)
+    signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+    go func() {
+        sig := <-sigChan
+        log.Printf("Received signal %v, shutting down...", sig)
+        cancel()
+    }()
+
+    // Run agent
+    if err := agent.Run(ctx); err != nil && err != context.Canceled {
+        log.Fatalf("Node agent error: %v", err)
+    }
+
+    log.Println("Node agent stopped")
 }
