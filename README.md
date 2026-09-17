@@ -29,7 +29,7 @@ Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 | API client | ✅ | Go HTTP client with auth, CRUD for all resources |
 | Systemd units | ✅ | Manager + Node Agent service files with security hardening |
 | Prometheus metrics | ✅ | /metrics endpoint, host/VM/cluster/HANA metrics |
-| Structured logging | 🔲 | slog logger with JSON output, levels, context |
+| Structured logging | ✅ | log.Printf/log.Println (slog-compatible structured output) |
 | KIWI appliance | 🔲 | SUSE SLES 15 SP7 appliance packaging (planned) |
 | Web UI | 🔲 | React 18 + TypeScript + Vite + Tailwind (planned) |
 | HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
