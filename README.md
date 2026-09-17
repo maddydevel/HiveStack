@@ -9,7 +9,7 @@ HiveStack is designed for:
 
 ## Status
 
-**v0.1.0 — Core platform complete, 8,376 lines Go across 17 packages.**
+**v0.1.0 — Core platform complete, 8,697 lines Go across 18 packages.**
 
 Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 
@@ -80,7 +80,7 @@ Run `./bin/hive --help` for full command reference.
 
 | Component | Technology |
 |-----------|------------|
-| Manager backend | Go 1.26, chi router |
+| Manager backend | Go 1.26 |
 | CLI | Go, cobra |
 | Web UI (planned) | React 18 + TypeScript + Vite + Tailwind CSS |
 | Database | PostgreSQL (pgx/v5 driver) |
@@ -88,7 +88,7 @@ Run `./bin/hive --help` for full command reference.
 | Node agent | Go, gRPC |
 | HA (HANA VMs) | SAP HANA System Replication + Pacemaker (customer-managed) |
 | HA (non-HANA VMs) | Host failure detection + automatic VM restart (planned) |
-| Monitoring (planned) | Prometheus + Grafana, structured logging |
+| Monitoring | Prometheus + Grafana, structured logging (slog) |
 | Packaging (planned) | KIWI appliance description for SLES 15 SP7 |
 
 ### Directory Structure
@@ -97,7 +97,7 @@ Run `./bin/hive --help` for full command reference.
 cmd/hive/                # CLI main entry point
 cmd/hive-manager/        # Manager server entry point
 internal/
-  api/                   # REST API server (chi router, 100+ endpoints)
+  api/                   # REST API server (stdlib ServeMux, 100+ endpoints)
   auth/                   # Authentication (JWT + Argon2id) and RBAC
   cli/                    # CLI commands and implementations (15+ commands)
   compliance/             # SAP HANA VM guardrails enforcement
@@ -107,7 +107,7 @@ internal/
   libvirt/                # KVM/QEMU/libvirt wrapper
   manager/                # Manager core services (CRUD, orchestration)
   node/                   # Node agent (gRPC server)
-  node/                   # Node agent (top-level for separate builds)
+  metrics/                # Prometheus metrics
 pkg/
   api/                    # HTTP API client
 api/                      # OpenAPI specification
@@ -125,6 +125,7 @@ See [api/openapi.yaml](api/openapi.yaml) for the full REST API specification (Op
 
 ```
 POST   /api/v1/auth/login              - Authenticate, get JWT
+POST   /api/v1/auth/logout             - Log out
 GET    /api/v1/auth/me                 - Current user info
 GET    /api/v1/users                   - List users (tenant-scoped)
 POST   /api/v1/users                   - Create user
@@ -169,6 +170,7 @@ GET    /api/v1/compliance/vms/{id}     - Compliance check for VM
 GET    /api/v1/compliance/evidence/{id} - Compliance evidence chain
 GET    /api/v1/compliance/drift        - Compliance drift report
 GET    /api/v1/health                  - Health check
+GET    /api/v1/metrics                 - Prometheus metrics
 ```
 
 ## SAP HANA Compliance
@@ -207,7 +209,7 @@ systemctl daemon-reload
 systemctl enable --now hivestack-manager
 
 # Node Agent (on each compute node)
-cp pkg/systemd/hiveStack-node.service /etc/systemd/system/
+cp pkg/systemd/hivestack-node.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now hivestack-node
 ```
@@ -222,7 +224,7 @@ server:
   host: "0.0.0.0"
   port: 8080
 database:
-  dsn: "postgres://hivestack:password@localhost:5432/hivestack?sslmode=disable"
+  dsn: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable"
 auth:
   jwt_secret: "your-secret-here"
   token_expiry: "24h"
