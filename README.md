@@ -16,25 +16,26 @@ Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 | Component | Status | Description |
 |-----------|--------|-------------|
 | Auth (JWT + Argon2id) | ✅ | Tenant-scoped JWT auth, Argon2id password hashing |
-| RBAC (5 roles) | ✅ | admin/editor/viewer/operator, permission-based access |
-| DB layer | ✅ | pgxpool, 12 tables, migrations, full CRUD repos |
-| API Server | ✅ | 100+ REST endpoints, chi router, auth middleware |
-| CLI (15+ commands) | ✅ | cobra CLI with table/JSON output |
-| Node Agent gRPC | ✅ | 5 gRPC handlers: Register/Heartbeat/ExecuteCommand/GetStatus/ListVMs |
-| Manager service | ✅ | Full CRUD for hosts and VMs, HANA compliance enforcement |
-| Event framework | ✅ | Pub/sub with 17 event types, DB-backed, WebSocket-ready |
-| Compliance evidence | ✅ | Hash-chained evidence, drift detection, chain verification |
-| HANA guardrails | ✅ | NUMA, hugepages, dedicated CPUs, no ballooning, no swap |
-| VMX parser | ✅ | VMware VMX → HiveStack VM config converter |
-| API client | ✅ | Go HTTP client with auth, CRUD for all resources |
-| Systemd units | ✅ | Manager + Node Agent service files with security hardening |
-| KIWI appliance | 🔲 | SUSE SLES 15 SP7 appliance packaging (planned) |
-| Web UI | 🔲 | React 18 + TypeScript + Vite + Tailwind (planned) |
-| HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
-| Prometheus metrics | 🔲 | /metrics endpoint + host monitoring (planned) |
-| Security hardening | 🔲 | TLS/mTLS, secrets mgmt, disk encryption, AppArmor (planned) |
-| VMware migration | 🔲 | Low priority, skip in first stable version |
-| SLOs & capacity | 🔲 | Definition + enforcement (planned) |
+|| RBAC (5 roles) | ✅ | admin/editor/viewer/operator, permission-based access |
+|| DB layer | ✅ | pgxpool, 12 tables, migrations, full CRUD repos |
+|| API Server | ✅ | 100+ REST endpoints, stdlib ServeMux, auth middleware |
+|| CLI (15+ commands) | ✅ | cobra CLI with table/JSON/YAML output |
+|| Node Agent gRPC | ✅ | 5 gRPC handlers: Register/Heartbeat/ExecuteCommand/GetStatus/ListVMs |
+|| Manager service | ✅ | Full CRUD for hosts and VMs, HANA compliance enforcement |
+|| Event framework | ✅ | Pub/sub with 17 event types, DB-backed, channelled |
+|| Compliance evidence | ✅ | Hash-chained evidence, drift detection, chain verification |
+|| HANA guardrails | ✅ | NUMA, hugepages, dedicated CPUs, no ballooning, no swap |
+|| VMX parser | ✅ | VMware VMX → HiveStack VM config converter |
+|| API client | ✅ | Go HTTP client with auth, CRUD for all resources |
+|| Systemd units | ✅ | Manager + Node Agent service files with security hardening |
+|| Prometheus metrics | ✅ | /metrics endpoint, host/VM/cluster/HANA metrics |
+|| Structured logging | ✅ | slog logger with JSON output, levels, context |
+|| KIWI appliance | 🔲 | SUSE SLES 15 SP7 appliance packaging (planned) |
+|| Web UI | 🔲 | React 18 + TypeScript + Vite + Tailwind (planned) |
+|| HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
+|| Security hardening | 🔲 | TLS/mTLS, secrets mgmt, disk encryption, AppArmor (planned) |
+|| VMware migration | 🔲 | Low priority, skip in first stable version |
+|| SLOs & capacity | 🔲 | Definition + enforcement (planned) |
 
 ## Quick Start
 
