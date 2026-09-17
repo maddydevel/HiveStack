@@ -26,6 +26,8 @@ import (
     "encoding/json"
     "fmt"
     "strings"
+    "sync"
+    "time"
 
     "github.com/maddydevel/HiveStack/internal/db"
 )
@@ -207,7 +209,15 @@ func ValidateHANAProfile(v *VMProfile) ValidationResult {
     return result
 }
 
+// ComputeHash computes a SHA-256 hash of arbitrary data.
+func ComputeHash(data []byte) string {
+    h := sha256.New()
+    h.Write(data)
+    return hex.EncodeToString(h.Sum(nil))
+}
+
 // HashEvidence computes a SHA-256 hash of the evidence for chain integrity.
+// Kept for backward compatibility with existing callers.
 func HashEvidence(previousHash string, evidence map[string]interface{}) string {
     data, _ := json.Marshal(evidence)
     h := sha256.New()
@@ -216,9 +226,37 @@ func HashEvidence(previousHash string, evidence map[string]interface{}) string {
     return hex.EncodeToString(h.Sum(nil))
 }
 
+// ChainHash combines a previous hash with a record hash to produce a chained hash.
+func ChainHash(prevHash, recordHash string) string {
+    h := sha256.New()
+    h.Write([]byte(prevHash))
+    h.Write([]byte(recordHash))
+    return hex.EncodeToString(h.Sum(nil))
+}
+
+// EvidenceRecord represents a single compliance evidence entry with hash-chain integrity.
+type EvidenceRecord struct {
+    VMID         string          `json:"vm_id"`
+    CheckID      string          `json:"check_id"`
+    PreviousHash string          `json:"previous_hash"`
+    CurrentHash  string          `json:"current_hash"`
+    Profile      json.RawMessage `json:"profile"` // VMProfile as JSON
+    Violations   []Violation     `json:"violations"`
+    Passed       bool            `json:"passed"`
+    Timestamp    time.Time       `json:"timestamp"`
+    CheckedBy    string          `json:"checked_by"`
+}
+
+// EvidenceChain represents a chronological chain of evidence records for a VM.
+type EvidenceChain struct {
+    VMID    string           `json:"vm_id"`
+    Records []*EvidenceRecord `json:"records"`
+}
+
 // ComplianceStore handles storing and retrieving compliance evidence.
 type ComplianceStore struct {
     db *db.DB
+    mu sync.Mutex
 }
 
 // NewComplianceStore creates a new compliance evidence store.
@@ -381,4 +419,336 @@ func (s *ComplianceStore) GenerateDriftReport(ctx context.Context, tenantID stri
     }
 
     return report, rows.Err()
+}
+
+// GenerateEvidence validates a VM profile, creates an evidence record, and stores it
+// in the compliance_evidence table with hash-chain integrity.
+func (s *ComplianceStore) GenerateEvidence(ctx context.Context, vmID string, profile *VMProfile) (*EvidenceRecord, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    result := ValidateHANAProfile(profile)
+    result.VMID = vmID
+    result.CheckedAt = time.Now().UTC().Format(time.RFC3339)
+
+    // Get the latest evidence hash for this VM to chain from
+    existing, err := s.GetEvidence(ctx, "", vmID)
+    if err != nil {
+        return nil, fmt.Errorf("get existing evidence: %w", err)
+    }
+
+    previousHash := ""
+    if len(existing) > 0 {
+        previousHash = existing[len(existing)-1].Hash
+    }
+
+    // Build the evidence record
+    profileJSON, err := json.Marshal(profile)
+    if err != nil {
+        return nil, fmt.Errorf("marshal profile: %w", err)
+    }
+
+    checkID := fmt.Sprintf("check-%s-%d", vmID, time.Now().UnixNano())
+
+    record := &EvidenceRecord{
+        VMID:         vmID,
+        CheckID:      checkID,
+        PreviousHash: previousHash,
+        Profile:      profileJSON,
+        Violations:   result.Violations,
+        Passed:       result.Passed,
+        Timestamp:    time.Now().UTC(),
+        CheckedBy:    "hana-guardrails",
+    }
+
+    // Compute current hash: hash of (previousHash + profileJSON + violations + passed + timestamp + checkedBy)
+    recordData := fmt.Sprintf("%s%s%d%d%s%s",
+        previousHash,
+        string(profileJSON),
+        len(result.Violations),
+        boolToInt(result.Passed),
+        record.Timestamp.Format(time.RFC3339),
+        record.CheckedBy,
+    )
+    record.CurrentHash = ComputeHash([]byte(recordData))
+
+    // Store in DB via compliance_evidence table
+    checkResultJSON, _ := json.Marshal(result)
+    evidenceJSON, _ := json.Marshal(map[string]interface{}{
+        "profile":    profileJSON,
+        "violations": result.Violations,
+        "check_id":   checkID,
+        "checked_by": record.CheckedBy,
+    })
+
+    _, err = s.db.ExecContext(ctx, `
+        INSERT INTO compliance_evidence (tenant_id, vm_id, check_type, check_result, passed, evidence, previous_hash, hash, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, "", vmID, "hana_guardrails", checkResultJSON, result.Passed, evidenceJSON, previousHash, record.CurrentHash, record.Timestamp)
+    if err != nil {
+        return nil, fmt.Errorf("store compliance evidence: %w", err)
+    }
+
+    return record, nil
+}
+
+// GetEvidenceChain returns the evidence chain as an EvidenceChain object.
+func (s *ComplianceStore) GetEvidenceChain(ctx context.Context, vmID string) (*EvidenceChain, error) {
+    evidence, err := s.GetEvidence(ctx, "", vmID)
+    if err != nil {
+        return nil, err
+    }
+
+    chain := &EvidenceChain{
+        VMID:    vmID,
+        Records: make([]*EvidenceRecord, 0, len(evidence)),
+    }
+
+    for _, e := range evidence {
+        var profile json.RawMessage
+        var violations []Violation
+        var checkID string
+        var checkedBy string
+
+        if len(e.Evidence) > 0 {
+            var evidenceMap map[string]interface{}
+            if err := json.Unmarshal(e.Evidence, &evidenceMap); err == nil {
+                if p, ok := evidenceMap["profile"]; ok {
+                    if raw, ok := p.(json.RawMessage); ok {
+                        profile = raw
+                    } else {
+                        b, _ := json.Marshal(p)
+                        profile = b
+                    }
+                }
+                if v, ok := evidenceMap["violations"]; ok {
+                    if arr, ok := v.([]interface{}); ok {
+                        for _, item := range arr {
+                            if m, ok := item.(map[string]interface{}); ok {
+                                violations = append(violations, Violation{
+                                    Rule:       fmt.Sprint(m["rule"]),
+                                    Field:      fmt.Sprint(m["field"]),
+                                    Expected:   fmt.Sprint(m["expected"]),
+                                    Actual:     fmt.Sprint(m["actual"]),
+                                    Severity:   fmt.Sprint(m["severity"]),
+                                    Correctable: m["correctable"] == true,
+                                })
+                            }
+                        }
+                    }
+                }
+                if cid, ok := evidenceMap["check_id"]; ok {
+                    checkID = fmt.Sprint(cid)
+                }
+                if cb, ok := evidenceMap["checked_by"]; ok {
+                    checkedBy = fmt.Sprint(cb)
+                }
+            }
+        }
+
+        record := &EvidenceRecord{
+            VMID:         e.VMID,
+            CheckID:      checkID,
+            PreviousHash: e.PreviousHash,
+            CurrentHash:  e.Hash,
+            Profile:      profile,
+            Violations:   violations,
+            Passed:       e.Passed,
+            Timestamp:    e.CreatedAt,
+            CheckedBy:    checkedBy,
+        }
+        chain.Records = append(chain.Records, record)
+    }
+
+    return chain, nil
+}
+
+// CheckDrift compares a current profile against the last stored compliant profile.
+// If drift is detected, a ComplianceDriftDetected event is published.
+func (s *ComplianceStore) CheckDrift(ctx context.Context, vmID string, currentProfile *VMProfile) (*ValidationResult, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    // Get the latest evidence for this VM
+    evidence, err := s.GetEvidence(ctx, "", vmID)
+    if err != nil {
+        return nil, fmt.Errorf("get evidence for drift check: %w", err)
+    }
+
+    result := ValidateHANAProfile(currentProfile)
+    result.VMID = vmID
+    result.CheckedAt = time.Now().UTC().Format(time.RFC3339)
+
+    // If no previous evidence, treat as new baseline — no drift
+    if len(evidence) == 0 {
+        result.Evidence = map[string]interface{}{
+            "drift_detected": false,
+            "reason":         "no previous evidence found — new baseline",
+        }
+        return &result, nil
+    }
+
+    // Find the last passed evidence
+    var lastPassed *db.ComplianceEvidence
+    for i := len(evidence) - 1; i >= 0; i-- {
+        if evidence[i].Passed {
+            lastPassed = &evidence[i]
+            break
+        }
+    }
+
+    // If no passed evidence exists, compare against the most recent
+    compareTarget := lastPassed
+    if compareTarget == nil {
+        compareTarget = &evidence[len(evidence)-1]
+    }
+
+    // Parse the stored profile from evidence
+    var storedProfile VMProfile
+    if len(compareTarget.Evidence) > 0 {
+        var evidenceMap map[string]interface{}
+        if err := json.Unmarshal(compareTarget.Evidence, &evidenceMap); err == nil {
+            if p, ok := evidenceMap["profile"]; ok {
+                if raw, ok := p.(json.RawMessage); ok {
+                    json.Unmarshal(raw, &storedProfile)
+                } else {
+                    b, _ := json.Marshal(p)
+                    json.Unmarshal(b, &storedProfile)
+                }
+            }
+        }
+    }
+
+    // Compare current vs stored profile
+    driftDetected := false
+    var driftDetails []map[string]interface{}
+
+    if currentProfile.CPUs != storedProfile.CPUs {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "cpus",
+            "expected":  storedProfile.CPUs,
+            "actual":    currentProfile.CPUs,
+            "severity":  "warning",
+        })
+    }
+    if currentProfile.MemoryBytes != storedProfile.MemoryBytes {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "memory_bytes",
+            "expected":  storedProfile.MemoryBytes,
+            "actual":    currentProfile.MemoryBytes,
+            "severity":  "warning",
+        })
+    }
+    if currentProfile.CPUAllocation != storedProfile.CPUAllocation {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "cpu_allocation",
+            "expected":  storedProfile.CPUAllocation,
+            "actual":    currentProfile.CPUAllocation,
+            "severity":  "error",
+        })
+    }
+    if currentProfile.HugepagesEnabled != storedProfile.HugepagesEnabled {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "hugepages_enabled",
+            "expected":  storedProfile.HugepagesEnabled,
+            "actual":    currentProfile.HugepagesEnabled,
+            "severity":  "error",
+        })
+    }
+    if currentProfile.BallooningAllowed != storedProfile.BallooningAllowed {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "ballooning_allowed",
+            "expected":  storedProfile.BallooningAllowed,
+            "actual":    currentProfile.BallooningAllowed,
+            "severity":  "error",
+        })
+    }
+    if currentProfile.SwapAllowed != storedProfile.SwapAllowed {
+        driftDetected = true
+        driftDetails = append(driftDetails, map[string]interface{}{
+            "field":     "swap_allowed",
+            "expected":  storedProfile.SwapAllowed,
+            "actual":    currentProfile.SwapAllowed,
+            "severity":  "error",
+        })
+    }
+
+    if driftDetected {
+        result.Evidence = map[string]interface{}{
+            "drift_detected": true,
+            "drift_details":  driftDetails,
+            "baseline_check": compareTarget.ID,
+        }
+
+        // Publish ComplianceDriftDetected event
+        driftEventJSON, _ := json.Marshal(map[string]interface{}{
+            "vm_id":         vmID,
+            "drift_details": driftDetails,
+            "baseline_hash": compareTarget.Hash,
+        })
+        _, err = s.db.CreateEvent(ctx, &db.Event{
+            TenantID:     "",
+            Type:         "compliance_drift_detected",
+            Severity:     "warning",
+            Message:      fmt.Sprintf("Compliance drift detected for VM %s", vmID),
+            ActorType:    "compliance",
+            ActorID:      "hana-guardrails",
+            ActorName:    "HANA Guardrails",
+            ResourceType: "vm",
+            ResourceID:   vmID,
+            ResourceName: vmID,
+            Metadata:     driftEventJSON,
+        })
+        if err != nil {
+            return &result, fmt.Errorf("publish drift event: %w", err)
+        }
+    } else {
+        result.Evidence = map[string]interface{}{
+            "drift_detected": false,
+            "reason":         "profile matches last compliant baseline",
+        }
+    }
+
+    return &result, nil
+}
+
+// VerifyChain verifies the hash chain integrity for a VM's evidence records.
+// Returns true if the chain is valid (each record's CurrentHash matches the next
+// record's PreviousHash), false otherwise.
+func (s *ComplianceStore) VerifyChain(ctx context.Context, vmID string) (bool, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    evidence, err := s.GetEvidence(ctx, "", vmID)
+    if err != nil {
+        return false, fmt.Errorf("get evidence for chain verification: %w", err)
+    }
+
+    if len(evidence) == 0 {
+        return true, nil // empty chain is valid
+    }
+
+    for i := 1; i < len(evidence); i++ {
+        prev := evidence[i-1]
+        curr := evidence[i]
+
+        // The next record's PreviousHash should equal the previous record's Hash
+        if curr.PreviousHash != prev.Hash {
+            return false, nil
+        }
+    }
+
+    return true, nil
+}
+
+func boolToInt(b bool) int {
+    if b {
+        return 1
+    }
+    return 0
 }
