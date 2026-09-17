@@ -113,7 +113,6 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
-    "os"
 
     "github.com/maddydevel/HiveStack/internal/auth"
     "github.com/maddydevel/HiveStack/internal/compliance"
