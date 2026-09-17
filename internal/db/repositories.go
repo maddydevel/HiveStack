@@ -619,10 +619,99 @@ func (d *DB) UpdateHostHeartbeat(ctx context.Context, hostID string) error {
 	return err
 }
 
-// UpdateHostStatus updates the status and heartbeat for a host.
-func (d *DB) UpdateHostStatus(ctx context.Context, hostID, status string) error {
-	_, err := d.ExecContext(ctx, `
-        UPDATE host SET status = $1, last_heartbeat = $2, updated_at = $2 WHERE id = $3
-    `, status, time.Now(), hostID)
+// CreateBackup inserts a new backup and returns its ID.
+func (d *DB) CreateBackup(ctx context.Context, b *Backup) (string, error) {
+	tx, err := d.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	id, err := NewRecord(ctx, tx, "backup", map[string]interface{}{
+		"tenant_id":    b.TenantID,
+		"vm_id":        b.VMID,
+		"name":         b.Name,
+		"status":       b.Status,
+		"type":         b.Type,
+		"storage_path": b.StoragePath,
+		"size_bytes":   b.SizeBytes,
+		"progress":     b.Progress,
+		"message":      b.Message,
+	})
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// GetBackup retrieves a backup by ID.
+func (d *DB) GetBackup(ctx context.Context, id string) (*Backup, error) {
+	row := d.QueryRowContext(ctx, `
+        SELECT id, tenant_id, vm_id, name, status, type, storage_path,
+               size_bytes, progress, message, schedule_id, started_at, completed_at,
+               created_at, updated_at
+        FROM backup WHERE id = $1
+    `, id)
+	var b Backup
+	err := row.Scan(&b.ID, &b.TenantID, &b.VMID, &b.Name, &b.Status, &b.Type, &b.StoragePath,
+		&b.SizeBytes, &b.Progress, &b.Message, &b.ScheduleID, &b.StartedAt, &b.CompletedAt,
+		&b.CreatedAt, &b.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+// ListBackups returns all backups for a tenant.
+func (d *DB) ListBackups(ctx context.Context, tenantID string) ([]Backup, error) {
+	rows, err := d.QueryContext(ctx, `
+        SELECT id, tenant_id, vm_id, name, status, type, storage_path,
+               size_bytes, progress, message, schedule_id, started_at, completed_at,
+               created_at, updated_at
+        FROM backup WHERE tenant_id = $1 ORDER BY created_at DESC
+    `, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var backups []Backup
+	for rows.Next() {
+		var b Backup
+		if err := rows.Scan(&b.ID, &b.TenantID, &b.VMID, &b.Name, &b.Status, &b.Type, &b.StoragePath,
+			&b.SizeBytes, &b.Progress, &b.Message, &b.ScheduleID, &b.StartedAt, &b.CompletedAt,
+			&b.CreatedAt, &b.UpdatedAt); err != nil {
+			return nil, err
+		}
+		backups = append(backups, b)
+	}
+	return backups, rows.Err()
+}
+
+// UpdateBackup updates a backup's fields.
+func (d *DB) UpdateBackup(ctx context.Context, id string, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return fmt.Errorf("no updates provided")
+	}
+	setClauses := make([]string, 0, len(updates))
+	args := make([]interface{}, 0, len(updates))
+	i := 1
+	for col, val := range updates {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i))
+		args = append(args, val)
+		i++
+	}
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE backup SET %s WHERE id = $%d",
+		joinStrings(setClauses, ", "), len(args))
+	_, err := d.ExecContext(ctx, query, args...)
+	return err
+}
+
+// DeleteBackup removes a backup by ID.
+func (d *DB) DeleteBackup(ctx context.Context, id string) error {
+	_, err := d.ExecContext(ctx, "DELETE FROM backup WHERE id = $1", id)
 	return err
 }

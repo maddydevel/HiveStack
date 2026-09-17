@@ -115,6 +115,7 @@ import (
     "net/http"
 
     "github.com/maddydevel/HiveStack/internal/auth"
+    "github.com/maddydevel/HiveStack/internal/compliance"
     "github.com/maddydevel/HiveStack/internal/db"
 )
 
@@ -126,10 +127,11 @@ var (
 
 // APIServer represents the HiveStack REST API server.
 type APIServer struct {
-    Config   *Config
-    db       *db.DB
-    rbac     *auth.RBACEngine
-    mux      *http.ServeMux
+    Config     *Config
+    db         *db.DB
+    rbac       *auth.RBACEngine
+    compliance *compliance.ComplianceStore
+    mux        *http.ServeMux
 }
 
 // Config holds the API server configuration.
@@ -168,9 +170,10 @@ type NodeConfig struct {
 // New creates a new API server.
 func New(cfg *Config, database *db.DB) (*APIServer, error) {
     s := &APIServer{
-        Config: cfg,
-        db:     database,
-        rbac:   auth.NewRBACEngine(),
+        Config:     cfg,
+        db:         database,
+        rbac:       auth.NewRBACEngine(),
+        compliance: compliance.NewComplianceStore(database),
     }
     s.mux = new(http.ServeMux)
     s.registerRoutes()
@@ -853,13 +856,14 @@ func (s *APIServer) handleGetVM(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    _, err := s.db.GetVM(context.Background(), "")
+    id := r.PathValue("id")
+    vm, err := s.db.GetVM(context.Background(), id)
     if err != nil {
         s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
         return
     }
-    s.respondJSON(w, http.StatusOK, map[string]interface{}{})
+    vm.CPUPinning = nil // don't expose CPU pinning details
+    s.respondJSON(w, http.StatusOK, vm)
 }
 
 // handleUpdateVM updates a VM.
@@ -906,8 +910,8 @@ func (s *APIServer) handleDeleteVM(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    if err := s.db.DeleteVM(context.Background(), ""); err != nil {
+    id := r.PathValue("id")
+    if err := s.db.DeleteVM(context.Background(), id); err != nil {
         s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
@@ -925,7 +929,7 @@ func (s *APIServer) handleVMStart(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
-    s.respondJSON(w, http.StatusOK, map[string]string{"status": "starting"})
+    s.respondJSON(w, http.StatusOK, map[string]string{"status": "running"})
 }
 
 // handleVMStop stops a VM.
@@ -948,7 +952,11 @@ func (s *APIServer) handleVMRestart(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
+    id := r.PathValue("id")
+    if err := s.db.UpdateVM(context.Background(), id, map[string]interface{}{"status": "restarting"}); err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
     s.respondJSON(w, http.StatusOK, map[string]string{"status": "restarting"})
 }
 
@@ -958,8 +966,8 @@ func (s *APIServer) handleVMMigrate(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"status": "migrating"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"status": "migrating", "vm_id": id})
 }
 
 // handleVMStackTrace returns snapshots for a VM.
@@ -1083,8 +1091,8 @@ func (s *APIServer) handleDeleteStoragePool(w http.ResponseWriter, r *http.Reque
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+    id := r.PathValue("id")
+    s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }
 
 // handleStoragePoolDisks returns disks in a storage pool.
@@ -1207,7 +1215,13 @@ func (s *APIServer) handleListBackups(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusOK, []map[string]string{})
+    claims, _ := auth.ClaimsFromContext(r.Context())
+    backups, err := s.db.ListBackups(context.Background(), claims.TenantID)
+    if err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    s.respondJSON(w, http.StatusOK, backups)
 }
 
 // handleCreateBackup creates a backup.
@@ -1216,7 +1230,36 @@ func (s *APIServer) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusCreated, map[string]string{"backup_id": "backup-new"})
+    claims, _ := auth.ClaimsFromContext(r.Context())
+    var req struct {
+        VMID       string `json:"vm_id"`
+        Name       string `json:"name"`
+        Type       string `json:"type"`
+        StoragePath string `json:"storage_path"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+        return
+    }
+    if req.VMID == "" || req.Name == "" {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "vm_id and name required"})
+        return
+    }
+    b := &db.Backup{
+        TenantID:     claims.TenantID,
+        VMID:         req.VMID,
+        Name:         req.Name,
+        Type:         req.Type,
+        StoragePath:  req.StoragePath,
+        Status:       "creating",
+        Progress:     0,
+    }
+    id, err := s.db.CreateBackup(context.Background(), b)
+    if err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    s.respondJSON(w, http.StatusCreated, map[string]string{"id": id, "status": "creating"})
 }
 
 // handleGetBackup returns a backup.
@@ -1226,13 +1269,26 @@ func (s *APIServer) handleGetBackup(w http.ResponseWriter, r *http.Request) {
         return
     }
     id := r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "available"})
+    backup, err := s.db.GetBackup(context.Background(), id)
+    if err != nil {
+        s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "backup not found"})
+        return
+    }
+    backup.Message = "" // don't expose internal message
+    s.respondJSON(w, http.StatusOK, backup)
 }
 
 // handleBackupRestore restores a backup.
 func (s *APIServer) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
     if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+        return
+    }
+    id := r.PathValue("id")
+    if err := s.db.UpdateBackup(context.Background(), id, map[string]interface{}{
+        "status": "restoring",
+    }); err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
     s.respondJSON(w, http.StatusOK, map[string]string{"status": "restoring"})
@@ -1242,6 +1298,13 @@ func (s *APIServer) handleBackupRestore(w http.ResponseWriter, r *http.Request) 
 func (s *APIServer) handleBackupCancel(w http.ResponseWriter, r *http.Request) {
     if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+        return
+    }
+    id := r.PathValue("id")
+    if err := s.db.UpdateBackup(context.Background(), id, map[string]interface{}{
+        "status": "cancelled",
+    }); err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
     s.respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
@@ -1269,7 +1332,30 @@ func (s *APIServer) handleComplianceCheck(w http.ResponseWriter, r *http.Request
         return
     }
     id := r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "compliant": "true", "role": "hana"})
+    vm, err := s.db.GetVM(context.Background(), id)
+    if err != nil {
+        s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+        return
+    }
+    profile := &compliance.VMProfile{
+        Role:                   string(vm.Role),
+        CPUs:                   vm.CPUs,
+        CPUAllocation:          vm.CPUAllocation,
+        MemoryBytes:            vm.MemoryBytes,
+        NUMAPolicy:             vm.NUMAPolicy,
+        HugepagesEnabled:       vm.HugepagesEnabled,
+        CPUPinning:             vm.CPUPinning,
+        MemoryReservationBytes: vm.MemoryReservationBytes,
+        BallooningAllowed:      vm.BallooningAllowed,
+        SwapAllowed:            vm.SwapAllowed,
+    }
+    result := compliance.ValidateHANAProfile(profile)
+    s.respondJSON(w, http.StatusOK, map[string]interface{}{
+        "id":        id,
+        "compliant": result.Passed,
+        "role":      string(vm.Role),
+        "violations": result.Violations,
+    })
 }
 
 // handleComplianceEvidence returns compliance evidence for a VM.
@@ -1279,7 +1365,20 @@ func (s *APIServer) handleComplianceEvidence(w http.ResponseWriter, r *http.Requ
         return
     }
     id := r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "evidence": "hash-chained-compliance-log"})
+    vm, err := s.db.GetVM(context.Background(), id)
+    if err != nil {
+        s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "vm not found"})
+        return
+    }
+    evidence, err := s.compliance.GetEvidence(context.Background(), vm.TenantID, id)
+    if err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    s.respondJSON(w, http.StatusOK, map[string]interface{}{
+        "id":      id,
+        "evidence": evidence,
+    })
 }
 
 // handleComplianceDrift returns compliance drift report.
@@ -1288,5 +1387,11 @@ func (s *APIServer) handleComplianceDrift(w http.ResponseWriter, r *http.Request
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
         return
     }
-    s.respondJSON(w, http.StatusOK, []map[string]string{})
+    claims, _ := auth.ClaimsFromContext(r.Context())
+    report, err := s.compliance.GenerateDriftReport(context.Background(), claims.TenantID)
+    if err != nil {
+        s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+        return
+    }
+    s.respondJSON(w, http.StatusOK, report)
 }

@@ -198,6 +198,7 @@ type Backup struct {
 	StartedAt    *time.Time
 	CompletedAt  *time.Time
 	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // Snapshot is a VM disk-state snapshot.
