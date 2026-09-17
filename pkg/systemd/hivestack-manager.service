@@ -1,0 +1,26 @@
+[Unit]
+Description=HiveStack Manager Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hivestack-manager --config /etc/hivestack/manager.yaml
+Restart=always
+RestartSec=5
+Environment=HIVE_STACK_LOG_LEVEL=info
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/lib/hivestack /var/log/hivestack /run/hivestack
+
+# Capability bounding (minimal for KVM)
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
