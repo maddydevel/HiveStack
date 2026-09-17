@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.26"
   GOLANGCI_VERSION: "v1.59"
 
 jobs:
@@ -59,6 +59,9 @@ jobs:
 
       - name: Run tests
         run: go test ./... -v -race -coverprofile=coverage.out
+
+      - name: Security scan
+        run: go run golang.org/x/vuln/cmd/govulncheck ./...
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

@@ -1,0 +1,41 @@
+version: "2"
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - gosimple
+    - staticcheck
+    - ineffassign
+    - govet
+    - unused
+    - errcheck
+    - gci
+
+linters-settings:
+  govet:
+    enable:
+      - autowidth
+      - bool
+      - composites
+      - copylocks
+      - defers
+      - directive
+      - errorsas
+      - fatifalse
+      - loopclosure
+      - lostcancel
+      - nilfunc
+      - printf
+      - shift
+      - stdmethods
+      - structtag
+      - testinggoroutine
+      - tests
+      - unreachable
+      - unsafeptr
+      - unusedresult
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
