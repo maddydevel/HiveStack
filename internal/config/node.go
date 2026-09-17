@@ -4,6 +4,8 @@ package config
 type NodeConfig struct {
     // ManagerAddress is the gRPC address of the Manager.
     ManagerAddress string `mapstructure:"manager_address"`
+    // GRPCAddress is the address the node agent's gRPC server listens on.
+    GRPCAddress string `mapstructure:"grpc_address"`
     // NodeID is this node's identifier.
     NodeID string `mapstructure:"node_id"`
     // HeartbeatInterval is the status report interval.

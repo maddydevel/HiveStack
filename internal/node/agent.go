@@ -53,6 +53,7 @@ type Agent struct {
     hostname    string
     nodeID      string
     libvirt     *libvirt.Libvirt
+    grpcServer  *grpcServer
     shutdownCh  chan struct{}
     wg          sync.WaitGroup
     running     bool
@@ -79,7 +80,7 @@ func New(cfg *config.NodeConfig) (*Agent, error) {
     return a, nil
 }
 
-// Run runs the node agent: connects to libvirt, starts all loops, waits for shutdown.
+// Run runs the node agent: starts gRPC server, connects to libvirt, starts all loops, waits for shutdown.
 func (a *Agent) Run(ctx context.Context) error {
     a.mu.Lock()
     if a.running {
@@ -88,6 +89,19 @@ func (a *Agent) Run(ctx context.Context) error {
     }
     a.running = true
     a.mu.Unlock()
+
+    // Start gRPC server first (before libvirt connection so Manager can reach us)
+    if a.config.GRPCAddress != "" {
+        grpcSrv, err := NewGRPCServer(a, a.config.GRPCAddress)
+        if err != nil {
+            return fmt.Errorf("create gRPC server: %w", err)
+        }
+        a.grpcServer = grpcSrv
+        if err := grpcSrv.Start(ctx); err != nil {
+            return fmt.Errorf("start gRPC server: %w", err)
+        }
+        log.Printf("[gRPC] Node agent gRPC server started on %s", a.config.GRPCAddress)
+    }
 
     // Connect to libvirt
     if err := a.libvirt.Connect(); err != nil {
