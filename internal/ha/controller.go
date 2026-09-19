@@ -133,6 +133,9 @@ func (c *Controller) reconcile(ctx context.Context) {
 	now := time.Now()
 
 	// Process heartbeat checks
+	if c.processor == nil {
+		return
+	}
 	transitions := c.processor.CheckAll(now)
 
 	for _, t := range transitions {
