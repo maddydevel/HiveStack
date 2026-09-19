@@ -117,6 +117,7 @@ import (
     "github.com/maddydevel/HiveStack/internal/auth"
     "github.com/maddydevel/HiveStack/internal/compliance"
     "github.com/maddydevel/HiveStack/internal/db"
+    "github.com/maddydevel/HiveStack/internal/ha"
     "github.com/maddydevel/HiveStack/internal/metrics"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -178,6 +179,27 @@ type APIServer struct {
 	rbac       *auth.RBACEngine
 	compliance compliance.ComplianceStore
 	mux        *http.ServeMux
+	// HA integration
+	haController    haControllerIface
+	haOrchestrator  haOrchestratorIface
+	policyManager   policyManagerIface
+}
+
+// Interfaces for HA integration (avoid circular imports).
+type haControllerIface interface {
+	GetStatus() map[string]interface{}
+	GetAllHealth() map[string]*ha.NodeHealth
+	TriggerFailover(ctx context.Context, nodeID string) error
+}
+
+type haOrchestratorIface interface {
+	GetActiveFailovers() []ha.FailoverRecord
+	GetFailoverHistory(limit int) []ha.FailoverRecord
+}
+
+type policyManagerIface interface {
+	GetPolicy(vmID string) (ha.HAPolicy, bool)
+	SetPolicy(vmID string, policy ha.HAPolicy, actor string) error
 }
 
 // Config holds the API server configuration.
@@ -312,6 +334,9 @@ func (s *APIServer) registerRoutes() {
     s.mux.HandleFunc("GET /api/v1/compliance/vms/{id}", auth.RequireAuth(s.handleComplianceCheck))
     s.mux.HandleFunc("GET /api/v1/compliance/evidence/{id}", auth.RequireAuth(s.handleComplianceEvidence))
     s.mux.HandleFunc("GET /api/v1/compliance/drift", auth.RequireAuth(s.handleComplianceDrift))
+
+    // Register HA routes
+    s.registerHARoutes()
 
     // Metrics (Prometheus scraping - no auth required)
     s.mux.HandleFunc("GET /metrics", s.handleMetrics)

@@ -32,7 +32,7 @@ Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 | Structured logging | ✅ | log.Printf/log.Println (slog-compatible structured output) |
 | KIWI appliance | ✅ | SLES 15 SP7 appliance packaging with first-boot initialization |
 | Web UI | ✅ | React 18 + TypeScript + Vite + Tailwind (303KB JS, 15 pages) |
-| HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
+| HA (non-HANA) | ✅ | Host failure detection + VM restart (30s heartbeat, 5min RTO) |
 | Security hardening | ✅ | TLS 1.3, mTLS gRPC, Vault/SOPS secrets, AppArmor, LUKS, rate limiting |
 | VMware migration | 🔲 | Low priority, skip in first stable version |
 | SLOs & capacity | 🔲 | Definition + enforcement (planned) |
