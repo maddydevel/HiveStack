@@ -67,7 +67,7 @@ func (gs *grpcServer) Start(ctx context.Context) error {
     }
     gs.lis = lis
 
-    gs.srv = grpc.NewServer()
+    gs.srv = grpc.NewServer(grpc.ForceServerCodec(proto.JSONCodec()))
     proto.RegisterNodeAgentServer(gs.srv, &nodeService{grpcServer: gs})
 
     log.Printf("[gRPC] Node agent gRPC server listening on %s", gs.addr)
@@ -228,6 +228,15 @@ func (s *nodeService) ExecuteCommand(ctx context.Context, req *proto.ExecuteComm
         name := req.Params["name"]
         if action == "create" && name == "" {
             err = fmt.Errorf("name parameter required for snapshot create")
+        } else if action == "delete" {
+            snapID := req.Params["snapshot_id"]
+            if snapID == "" {
+                err = fmt.Errorf("snapshot_id parameter required for snapshot delete")
+            } else {
+                result = fmt.Sprintf("snapshot %s deleted (simulated)", snapID)
+            }
+        } else if action == "list" {
+            result = "snapshots listed (simulated)"
         } else {
             result = fmt.Sprintf("snapshot %s: %s (simulated)", action, name)
         }
@@ -238,6 +247,8 @@ func (s *nodeService) ExecuteCommand(ctx context.Context, req *proto.ExecuteComm
         } else {
             result = fmt.Sprintf("resized to %s bytes (simulated)", size)
         }
+    case proto.CommandType_VMGetStats:
+        result = "cpu_usage=0 memory_usage=0 disk_io=0 network_io=0"
     case proto.CommandType_StorageCreate:
         pool := req.Params["pool"]
         name := req.Params["name"]

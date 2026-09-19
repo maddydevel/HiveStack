@@ -21,6 +21,7 @@ import (
 	"github.com/maddydevel/HiveStack/internal/compliance"
 	"github.com/maddydevel/HiveStack/internal/db"
 	"github.com/maddydevel/HiveStack/internal/ha"
+	"github.com/maddydevel/HiveStack/internal/libvirt"
 	"github.com/maddydevel/HiveStack/internal/node"
 )
 
@@ -30,16 +31,37 @@ type roleContextKey struct{}
 // Manager holds the HiveStack Manager state and all its subsystems.
 type Manager struct {
 	mu         sync.Mutex
+	allocMu    sync.Mutex // serializes host capacity check + VM insert
 	db         *db.DB
+	store      vmStore // database access used by MigrateVM and event publishing
 	rbac       *auth.RBACEngine
 	compliance *compliance.ComplianceStore
 	apiServer  *api.APIServer
 	nodes      map[string]*node.Agent
+	controllers map[string]node.VMController // remote node agents reached over gRPC
 	shutdownCh chan struct{}
 	wg         sync.WaitGroup
 	running    bool
 	haSvc      *haService
+
+	// migrations holds the capacity claimed on the target host by each in-flight
+	// migration, keyed by VM ID. The VM's row still points at its source host
+	// until the migration completes, so without this a concurrent migration or
+	// create could claim the same capacity. Guarded by allocMu.
+	migrations map[string]db.VM
 }
+
+// vmStore is the subset of the database that MigrateVM and publishEvent use.
+// *db.DB satisfies it; tests substitute an in-memory fake.
+type vmStore interface {
+	GetVM(ctx context.Context, id string) (*db.VM, error)
+	GetHost(ctx context.Context, id string) (*db.Host, error)
+	ListVMs(ctx context.Context, tenantID string) ([]db.VM, error)
+	UpdateVM(ctx context.Context, id string, updates map[string]interface{}) error
+	CreateEvent(ctx context.Context, e *db.Event) (string, error)
+}
+
+var _ vmStore = (*db.DB)(nil)
 
 // New creates a new HiveStack Manager.
 func New(database *db.DB) (*Manager, error) {
@@ -49,9 +71,11 @@ func New(database *db.DB) (*Manager, error) {
 
     m := &Manager{
         db:         database,
+        store:      database,
         rbac:       rbac,
         compliance: compliance,
         nodes:      nodes,
+        controllers: make(map[string]node.VMController),
         shutdownCh: make(chan struct{}),
     }
 
@@ -108,6 +132,7 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
 
     // Wire HA dependencies into the API server
     m.wireHAIntoAPI()
+    m.apiServer.SetVMHandler(m)
 
     m.wg.Add(1)
     go func() {
@@ -174,7 +199,7 @@ func GetAgentStatus(agent *node.Agent) (string, bool) {
 // publishEvent inserts an event record into the events table.
 func (m *Manager) publishEvent(ctx context.Context, tenantID, severity, message,
 	actorType, actorID, actorName, resourceType, resourceID, resourceName string) error {
-	_, err := m.db.CreateEvent(ctx, &db.Event{
+	_, err := m.store.CreateEvent(ctx, &db.Event{
 		TenantID:     tenantID,
 		Type:         "info",
 		Severity:     severity,
@@ -462,19 +487,15 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 		return "", fmt.Errorf("HANA compliance check failed: %s", violations)
 	}
 
-	// Generate libvirt XML stub
-	xml := fmt.Sprintf(`<domain type='kvm'>
-  <name>%s</name>
-  <memory>%d</memory>
-  <vcpu>%d</vcpu>
-  <os>
-    <type>%s</type>
-  </os>
-</domain>`, spec.Name, spec.MemoryBytes, spec.CPUS, spec.OS)
-
-	// Define VM via libvirt (stub — in production, call node agent)
-	// For this stub, we just log the XML
-	log.Printf("VM libvirt XML (stub): %s", xml)
+	domainXML, err := libvirt.GenerateDomainXML(libvirt.DomainSpec{
+		Name:        spec.Name,
+		MemoryBytes: spec.MemoryBytes,
+		VCPUs:       spec.CPUS,
+	})
+	if err != nil {
+		return "", fmt.Errorf("generate libvirt XML: %w", err)
+	}
+	log.Printf("VM libvirt XML for %s: %s", spec.Name, domainXML)
 
 	// Insert VM record
 	vm := &db.VM{
@@ -505,13 +526,13 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 		vm.NUMAPolicy = &policy
 	}
 
-	id, err := m.db.CreateVM(ctx, vm)
+	id, remainingCPUs, remainingMemory, err := m.allocateVM(ctx, host, vm)
 	if err != nil {
-		return "", fmt.Errorf("create VM record: %w", err)
+		return "", err
 	}
 
-	// Allocate resources (stub — in production, reserve on host)
-	log.Printf("Resources allocated for VM %s on host %s", spec.Name, host.Name)
+	log.Printf("Resources allocated for VM %s on host %s: %d vCPUs, %d bytes memory (remaining: %d CPUs, %d bytes memory)",
+		spec.Name, host.Name, spec.CPUS, spec.MemoryBytes, remainingCPUs, remainingMemory)
 
 	// Publish event
 	eventMsg := fmt.Sprintf("VM created: %s (id=%s, host=%s)", spec.Name, id, host.Name)
@@ -521,6 +542,59 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 
 	log.Printf("VM created: %s (id=%s)", spec.Name, id)
 	return id, nil
+}
+
+// allocateVM verifies that host has enough unallocated CPU and memory for vm and
+// inserts the VM record, which is what reserves the capacity. Every VM already
+// assigned to the host counts against its capacity regardless of power state,
+// since a stopped VM can be started again. The check and insert run under
+// allocMu so concurrent creates cannot both claim the last of the capacity.
+// It returns the new VM ID and the CPUs and memory left on the host afterwards.
+func (m *Manager) allocateVM(ctx context.Context, host *db.Host, vm *db.VM) (string, int, int64, error) {
+	m.allocMu.Lock()
+	defer m.allocMu.Unlock()
+
+	vms, err := m.db.ListVMs(ctx, host.TenantID)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("list VMs for capacity check: %w", err)
+	}
+
+	remainingCPUs, remainingMemory, err := checkHostCapacity(host, m.withPendingMigrations(vms), vm.CPUs, vm.MemoryBytes)
+	if err != nil {
+		return "", 0, 0, err
+	}
+
+	id, err := m.db.CreateVM(ctx, vm)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("create VM record: %w", err)
+	}
+	return id, remainingCPUs, remainingMemory, nil
+}
+
+// checkHostCapacity sums the CPUs and memory of the VMs in vms that are assigned
+// to host and returns what would remain after adding a VM requesting cpus and
+// memoryBytes, or an error if either resource would be exceeded.
+func checkHostCapacity(host *db.Host, vms []db.VM, cpus int, memoryBytes int64) (int, int64, error) {
+	var allocatedCPUs int
+	var allocatedMemory int64
+	for _, existing := range vms {
+		if existing.HostID != nil && *existing.HostID == host.ID {
+			allocatedCPUs += existing.CPUs
+			allocatedMemory += existing.MemoryBytes
+		}
+	}
+
+	availableCPUs := host.CPUCount - allocatedCPUs
+	if cpus > availableCPUs {
+		return 0, 0, fmt.Errorf("host %s has insufficient CPU: requested %d, available %d (of %d, %d allocated)",
+			host.Name, cpus, availableCPUs, host.CPUCount, allocatedCPUs)
+	}
+	availableMemory := host.MemoryTotalBytes - allocatedMemory
+	if memoryBytes > availableMemory {
+		return 0, 0, fmt.Errorf("host %s has insufficient memory: requested %d bytes, available %d bytes (of %d, %d allocated)",
+			host.Name, memoryBytes, availableMemory, host.MemoryTotalBytes, allocatedMemory)
+	}
+	return availableCPUs - cpus, availableMemory - memoryBytes, nil
 }
 
 // StartVM finds the VM and its host, forwards to the node agent, and updates VM state.
@@ -548,16 +622,13 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 	}
 
 	hostID := *vm.HostID
-	m.mu.Lock()
-	agent, hasAgent := m.nodes[hostID]
-	m.mu.Unlock()
-
-	if !hasAgent || agent == nil {
+	ctrl := m.vmController(hostID)
+	if ctrl == nil {
 		return fmt.Errorf("host %s has no registered node agent", hostID)
 	}
 
 	// Forward start command to node agent
-	if err := agent.StartVM(ctx, id); err != nil {
+	if err := ctrl.StartVM(ctx, id); err != nil {
 		return fmt.Errorf("node agent start VM: %w", err)
 	}
 
@@ -605,16 +676,13 @@ func (m *Manager) StopVM(ctx context.Context, id string) error {
 	}
 
 	hostID := *vm.HostID
-	m.mu.Lock()
-	agent, hasAgent := m.nodes[hostID]
-	m.mu.Unlock()
-
-	if !hasAgent || agent == nil {
+	ctrl := m.vmController(hostID)
+	if ctrl == nil {
 		return fmt.Errorf("host %s has no registered node agent", hostID)
 	}
 
 	// Forward stop command to node agent
-	if err := agent.StopVM(ctx, id); err != nil {
+	if err := ctrl.StopVM(ctx, id); err != nil {
 		return fmt.Errorf("node agent stop VM: %w", err)
 	}
 
@@ -685,12 +753,8 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 	}
 
 	hostID := *vm.HostID
-	m.mu.Lock()
-	agent, hasAgent := m.nodes[hostID]
-	m.mu.Unlock()
-
-	if hasAgent && agent != nil {
-		if err := agent.DestroyVM(ctx, id); err != nil {
+	if ctrl := m.vmController(hostID); ctrl != nil {
+		if err := ctrl.DestroyVM(ctx, id); err != nil {
 			return fmt.Errorf("node agent destroy VM: %w", err)
 		}
 	}
@@ -710,8 +774,20 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 	return nil
 }
 
-// MigrateVM finds the VM and target host, forwards migrate command to source node agent,
-// and updates the host assignment.
+// migrationTimeout bounds the database writes that follow a migration attempt.
+// They run on a context detached from the caller's, because the caller giving
+// up must not stop the manager from recording where the VM ended up.
+const migrationTimeout = 10 * time.Second
+
+// MigrateVM live-migrates a running VM to targetHostID. It verifies that the
+// source node agent can migrate and that the target host is usable and has
+// capacity, reserves that capacity, marks the VM "migrating", asks the source
+// agent to migrate, and on success points the VM at the target host.
+//
+// If the agent reports failure the VM's status is restored, leaving it on the
+// source host. If the agent succeeds but recording the new host fails, the VM
+// is left "migrating" and the error says so: it is running on the target and
+// the record needs reconciling.
 func (m *Manager) MigrateVM(ctx context.Context, id, targetHostID string) error {
 	role, hasRole := roleFromContext(ctx)
 	if !hasRole {
@@ -721,55 +797,150 @@ func (m *Manager) MigrateVM(ctx context.Context, id, targetHostID string) error 
 		return fmt.Errorf("permission denied: %w", err)
 	}
 
-	vm, err := m.db.GetVM(ctx, id)
+	vm, err := m.store.GetVM(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get VM: %w", err)
 	}
-
+	if vm.Status != "running" {
+		return fmt.Errorf("VM %s is not running (status: %s): only running VMs can be live-migrated", vm.Name, vm.Status)
+	}
 	if vm.HostID == nil || *vm.HostID == "" {
 		return fmt.Errorf("VM %s has no source host", vm.Name)
 	}
+	sourceHostID := *vm.HostID
+	if sourceHostID == targetHostID {
+		return fmt.Errorf("VM %s is already on host %s", vm.Name, targetHostID)
+	}
 
-	// Verify target host exists
-	targetHost, err := m.db.GetHost(ctx, targetHostID)
+	targetHost, err := m.store.GetHost(ctx, targetHostID)
 	if err != nil {
 		return fmt.Errorf("get target host: %w", err)
 	}
 	if targetHost.Status != "active" {
 		return fmt.Errorf("target host %s is not active (status: %s)", targetHost.Name, targetHost.Status)
 	}
+	if targetHost.MaintenanceMode {
+		return fmt.Errorf("target host %s is in maintenance mode", targetHost.Name)
+	}
+	targetAddr := targetHost.Hostname
+	if targetAddr == "" {
+		targetAddr = targetHost.IPAddress
+	}
+	if targetAddr == "" {
+		return fmt.Errorf("target host %s has no hostname or IP address", targetHost.Name)
+	}
 
-	// Find source host agent
-	sourceHostID := *vm.HostID
-	m.mu.Lock()
-	sourceAgent, hasSource := m.nodes[sourceHostID]
-	m.mu.Unlock()
-
-	if !hasSource || sourceAgent == nil {
+	// The source agent must be able to migrate. The target needs an agent too,
+	// or the manager could not control the VM once it arrives.
+	sourceCtrl := m.vmController(sourceHostID)
+	if sourceCtrl == nil {
 		return fmt.Errorf("source host %s has no registered node agent", sourceHostID)
 	}
-
-	// Forward migrate command to source node agent
-	// In production: agent.ExecuteCommand with migrate payload
-	log.Printf("Migrating VM %s from host %s to host %s", vm.Name, sourceHostID, targetHostID)
-
-	// Update VM host assignment
-	newHostID := targetHostID
-	if err := m.db.UpdateVM(ctx, id, map[string]interface{}{
-		"host_id": newHostID,
-	}); err != nil {
-		return fmt.Errorf("update VM host: %w", err)
+	migrator, ok := sourceCtrl.(node.VMMigrator)
+	if !ok {
+		return fmt.Errorf("node agent for source host %s does not support live migration", sourceHostID)
+	}
+	if m.vmController(targetHostID) == nil {
+		return fmt.Errorf("target host %s has no registered node agent", targetHost.Name)
 	}
 
-	// Update status to migrated
-	if err := m.db.UpdateVM(ctx, id, map[string]interface{}{
-		"status": "migrated",
-	}); err != nil {
-		log.Printf("Warning: failed to update VM status: %v", err)
+	if err := m.reserveMigration(ctx, vm, targetHost); err != nil {
+		return err
+	}
+	defer m.releaseMigration(vm.ID)
+
+	prevStatus := vm.Status
+	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{"status": "migrating"}); err != nil {
+		return fmt.Errorf("mark VM migrating: %w", err)
 	}
 
-	log.Printf("VM migrated: %s (id=%s) to host %s", vm.Name, id, targetHostID)
+	log.Printf("Migrating VM %s (id=%s) from host %s to host %s", vm.Name, id, sourceHostID, targetHost.Name)
+
+	if err := migrator.MigrateVM(ctx, id, targetAddr); err != nil {
+		rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), migrationTimeout)
+		defer cancel()
+		if rbErr := m.store.UpdateVM(rbCtx, id, map[string]interface{}{"status": prevStatus}); rbErr != nil {
+			return fmt.Errorf("node agent migrate VM: %w (restoring status %q also failed, VM left %q: %v)",
+				err, prevStatus, "migrating", rbErr)
+		}
+		return fmt.Errorf("node agent migrate VM: %w", err)
+	}
+
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), migrationTimeout)
+	defer cancel()
+	if err := m.store.UpdateVM(commitCtx, id, map[string]interface{}{
+		"host_id": targetHostID,
+		"status":  prevStatus,
+	}); err != nil {
+		return fmt.Errorf("VM %s migrated to host %s but recording it failed; VM left %q, needs reconciliation: %w",
+			vm.Name, targetHost.Name, "migrating", err)
+	}
+
+	eventMsg := fmt.Sprintf("VM migrated: %s (id=%s) from host %s to host %s", vm.Name, id, sourceHostID, targetHost.Name)
+	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, vm.Name, "vm", id, vm.Name); err != nil {
+		log.Printf("Warning: failed to publish VMMigrated event: %v", err)
+	}
+
+	log.Printf("VM migrated: %s (id=%s) to host %s", vm.Name, id, targetHost.Name)
 	return nil
+}
+
+// reserveMigration checks that target can take vm on top of everything already
+// assigned to it or in flight to it, and records the claim so that concurrent
+// migrations and creates see it. Callers must releaseMigration when done.
+func (m *Manager) reserveMigration(ctx context.Context, vm *db.VM, target *db.Host) error {
+	m.allocMu.Lock()
+	defer m.allocMu.Unlock()
+
+	if _, busy := m.migrations[vm.ID]; busy {
+		return fmt.Errorf("VM %s is already being migrated", vm.Name)
+	}
+
+	vms, err := m.store.ListVMs(ctx, target.TenantID)
+	if err != nil {
+		return fmt.Errorf("list VMs for capacity check: %w", err)
+	}
+	if _, _, err := checkHostCapacity(target, m.withPendingMigrations(vms), vm.CPUs, vm.MemoryBytes); err != nil {
+		return fmt.Errorf("cannot migrate VM %s: %w", vm.Name, err)
+	}
+
+	if m.migrations == nil {
+		m.migrations = make(map[string]db.VM)
+	}
+	targetID := target.ID
+	m.migrations[vm.ID] = db.VM{ID: vm.ID, HostID: &targetID, CPUs: vm.CPUs, MemoryBytes: vm.MemoryBytes}
+	return nil
+}
+
+// releaseMigration drops the capacity claim recorded by reserveMigration.
+func (m *Manager) releaseMigration(vmID string) {
+	m.allocMu.Lock()
+	defer m.allocMu.Unlock()
+	delete(m.migrations, vmID)
+}
+
+// withPendingMigrations returns vms plus one entry per in-flight migration,
+// assigned to the migration's target host, so checkHostCapacity counts the
+// capacity those migrations have claimed. A migration whose VM row already
+// points at its target is not added twice. Callers must hold allocMu.
+func (m *Manager) withPendingMigrations(vms []db.VM) []db.VM {
+	if len(m.migrations) == 0 {
+		return vms
+	}
+	arrived := make(map[string]string, len(vms))
+	for _, v := range vms {
+		if v.HostID != nil {
+			arrived[v.ID] = *v.HostID
+		}
+	}
+	out := vms[:len(vms):len(vms)]
+	for id, pending := range m.migrations {
+		if arrived[id] == *pending.HostID {
+			continue
+		}
+		out = append(out, pending)
+	}
+	return out
 }
 
 // ---------- Node Agent Management ----------
@@ -782,11 +953,37 @@ func (m *Manager) RegisterNode(id string, agent *node.Agent) {
 	log.Printf("Node registered: %s", id)
 }
 
-// UnregisterNode removes a node agent from the manager.
+// RegisterNodeController registers a VMController, typically a *node.Client
+// connected to a remote node agent, to handle VM lifecycle commands for node id.
+// It takes precedence over a local agent registered with RegisterNode. The
+// caller keeps ownership of the controller and is responsible for closing it.
+func (m *Manager) RegisterNodeController(id string, ctrl node.VMController) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.controllers[id] = ctrl
+	log.Printf("Node controller registered: %s", id)
+}
+
+// vmController returns the VMController for the node hostID: the registered
+// remote controller if there is one, otherwise the local agent, otherwise nil.
+func (m *Manager) vmController(hostID string) node.VMController {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ctrl, ok := m.controllers[hostID]; ok && ctrl != nil {
+		return ctrl
+	}
+	if agent, ok := m.nodes[hostID]; ok && agent != nil {
+		return agent
+	}
+	return nil
+}
+
+// UnregisterNode removes a node agent and its controller from the manager.
 func (m *Manager) UnregisterNode(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.nodes, id)
+	delete(m.controllers, id)
 	log.Printf("Node unregistered: %s", id)
 }
 
@@ -857,4 +1054,97 @@ func (m *Manager) Shutdown() {
 	if m.apiServer != nil {
 		m.apiServer.Shutdown()
 	}
+}
+
+// GetSnapshots returns the snapshots for a VM (delegates to node agent).
+func (m *Manager) GetSnapshots(ctx context.Context, vmID string) ([]map[string]interface{}, error) {
+	vm, err := m.db.GetVM(ctx, vmID)
+	if err != nil {
+		return nil, fmt.Errorf("get VM: %w", err)
+	}
+	if vm.HostID == nil || *vm.HostID == "" {
+		return nil, fmt.Errorf("VM %s has no host assigned", vmID)
+	}
+	ctrl := m.vmController(*vm.HostID)
+	if ctrl == nil {
+		return nil, fmt.Errorf("host %s has no registered node agent", *vm.HostID)
+	}
+	snapshots, ok := ctrl.(interface {
+		GetSnapshots(ctx context.Context, vmID string) ([]map[string]interface{}, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("node agent does not support snapshots")
+	}
+	return snapshots.GetSnapshots(ctx, vmID)
+}
+
+// CreateSnapshot creates a snapshot for a VM (delegates to node agent).
+func (m *Manager) CreateSnapshot(ctx context.Context, vmID, name string) (string, error) {
+	vm, err := m.db.GetVM(ctx, vmID)
+	if err != nil {
+		return "", fmt.Errorf("get VM: %w", err)
+	}
+	if vm.HostID == nil || *vm.HostID == "" {
+		return "", fmt.Errorf("VM %s has no host assigned", vmID)
+	}
+	ctrl := m.vmController(*vm.HostID)
+	if ctrl == nil {
+		return "", fmt.Errorf("host %s has no registered node agent", *vm.HostID)
+	}
+	snap, ok := ctrl.(interface {
+		CreateSnapshot(ctx context.Context, vmID, name string) (string, error)
+	})
+	if !ok {
+		return "", fmt.Errorf("node agent does not support snapshots")
+	}
+	return snap.CreateSnapshot(ctx, vmID, name)
+}
+
+// DeleteSnapshot deletes a VM snapshot (delegates to node agent).
+func (m *Manager) DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error {
+	vm, err := m.db.GetVM(ctx, vmID)
+	if err != nil {
+		return fmt.Errorf("get VM: %w", err)
+	}
+	if vm.HostID == nil || *vm.HostID == "" {
+		return fmt.Errorf("VM %s has no host assigned", vmID)
+	}
+	ctrl := m.vmController(*vm.HostID)
+	if ctrl == nil {
+		return fmt.Errorf("host %s has no registered node agent", *vm.HostID)
+	}
+	snap, ok := ctrl.(interface {
+		DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error
+	})
+	if !ok {
+		return fmt.Errorf("node agent does not support snapshots")
+	}
+	return snap.DeleteSnapshot(ctx, vmID, snapshotID)
+}
+
+// GetVMStats returns VM statistics (delegates to node agent).
+func (m *Manager) GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error) {
+	vm, err := m.db.GetVM(ctx, vmID)
+	if err != nil {
+		return nil, fmt.Errorf("get VM: %w", err)
+	}
+	if vm.HostID == nil || *vm.HostID == "" {
+		return nil, fmt.Errorf("VM %s has no host assigned", vmID)
+	}
+	ctrl := m.vmController(*vm.HostID)
+	if ctrl == nil {
+		return nil, fmt.Errorf("host %s has no registered node agent", *vm.HostID)
+	}
+	stats, ok := ctrl.(interface {
+		GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error)
+	})
+	if !ok {
+		return map[string]interface{}{
+			"cpu_usage":   0,
+			"memory_usage": 0,
+			"disk_io":     0,
+			"network_io":  0,
+		}, nil
+	}
+	return stats.GetVMStats(ctx, vmID)
 }

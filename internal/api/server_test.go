@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/maddydevel/HiveStack/internal/auth"
@@ -223,9 +224,38 @@ func newTestAPI(t *testing.T, mdb *mockDB) *APIServer {
 		db:         mdb,
 		rbac:       auth.NewRBACEngine(),
 		mux:        new(http.ServeMux),
+		vmHandler:  &mockVMHandler{},
 	}
 	s.registerRoutes()
 	return s
+}
+
+// mockVMHandler implements VMHandler for testing.
+type mockVMHandler struct{}
+
+func (h *mockVMHandler) MigrateVM(ctx context.Context, id, targetHostID string) error {
+	return nil
+}
+
+func (h *mockVMHandler) GetSnapshots(ctx context.Context, vmID string) ([]map[string]interface{}, error) {
+	return []map[string]interface{}{}, nil
+}
+
+func (h *mockVMHandler) CreateSnapshot(ctx context.Context, vmID, name string) (string, error) {
+	return "snap-test", nil
+}
+
+func (h *mockVMHandler) DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error {
+	return nil
+}
+
+func (h *mockVMHandler) GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error) {
+	return map[string]interface{}{
+		"cpu_usage":   0,
+		"memory_usage": 0,
+		"disk_io":     0,
+		"network_io":  0,
+	}, nil
 }
 
 // authRequest returns a request with a Bearer token.
@@ -733,14 +763,17 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("VMMigrate success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
-		req := authRequest("POST", "/api/v1/vms/vm1/migrate", token, nil)
+		body := strings.NewReader(`{"target_host": "host2"}`)
+		req := httptest.NewRequest("POST", "/api/v1/vms/vm1/migrate", body)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("got %d, want 200", rec.Code)
+		if rec.Code != http.StatusAccepted {
+			t.Errorf("got %d, want %d", rec.Code, http.StatusAccepted)
 		}
 	})
 }

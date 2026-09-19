@@ -178,11 +178,21 @@ type APIServer struct {
 	db         dbInterface
 	rbac       *auth.RBACEngine
 	compliance compliance.ComplianceStore
+	vmHandler  VMHandler
 	mux        *http.ServeMux
 	// HA integration
 	haController    haControllerIface
 	haOrchestrator  haOrchestratorIface
 	policyManager   policyManagerIface
+}
+
+// VMHandler defines the VM lifecycle operations the API server delegates to.
+type VMHandler interface {
+	MigrateVM(ctx context.Context, id, targetHostID string) error
+	GetSnapshots(ctx context.Context, vmID string) ([]map[string]interface{}, error)
+	CreateSnapshot(ctx context.Context, vmID, name string) (string, error)
+	DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error
+	GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error)
 }
 
 // Interfaces for HA integration (avoid circular imports).
@@ -372,6 +382,11 @@ func (s *APIServer) SetHAOrchestrator(orch haOrchestratorIface) {
 // SetPolicyManager sets the policy manager for API handlers.
 func (s *APIServer) SetPolicyManager(pm policyManagerIface) {
 	s.policyManager = pm
+}
+
+// SetVMHandler sets the VM lifecycle handler for API handlers.
+func (s *APIServer) SetVMHandler(h VMHandler) {
+	s.vmHandler = h
 }
 
 // Shutdown gracefully shuts down the server.
@@ -1064,41 +1079,99 @@ func (s *APIServer) handleVMRestart(w http.ResponseWriter, r *http.Request) {
 
 // handleVMMigrate migrates a VM to another host.
 func (s *APIServer) handleVMMigrate(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    id := r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"status": "migrating", "vm_id": id})
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	var req struct {
+		TargetHost string `json:"target_host"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.TargetHost == "" {
+		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "target_host required"})
+		return
+	}
+	if s.vmHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "manager not available"})
+		return
+	}
+	if err := s.vmHandler.MigrateVM(r.Context(), id, req.TargetHost); err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusAccepted, map[string]interface{}{
+		"status":  "migrating",
+		"vm_id":   id,
+		"target":  req.TargetHost,
+	})
 }
 
 // handleVMStackTrace returns snapshots for a VM.
 func (s *APIServer) handleVMStackTrace(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, []map[string]string{})
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	if s.vmHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "manager not available"})
+		return
+	}
+	snapshots, err := s.vmHandler.GetSnapshots(r.Context(), id)
+	if err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusOK, snapshots)
 }
 
 // handleVMCreateSnapshot creates a VM snapshot.
 func (s *APIServer) handleVMCreateSnapshot(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    id := r.PathValue("id")
-    s.respondJSON(w, http.StatusCreated, map[string]string{"snapshot_id": "snap-" + id})
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if s.vmHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "manager not available"})
+		return
+	}
+	snapshotID, err := s.vmHandler.CreateSnapshot(r.Context(), id, req.Name)
+	if err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusCreated, map[string]string{"snapshot_id": snapshotID})
 }
 
 // handleVMDeleteSnapshot deletes a VM snapshot.
 func (s *APIServer) handleVMDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	sid := r.PathValue("sid")
+	if s.vmHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "manager not available"})
+		return
+	}
+	if err := s.vmHandler.DeleteSnapshot(r.Context(), id, sid); err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // handleVMConsole returns the console URL for a VM.
@@ -1113,17 +1186,21 @@ func (s *APIServer) handleVMConsole(w http.ResponseWriter, r *http.Request) {
 
 // handleVMStats returns VM statistics.
 func (s *APIServer) handleVMStats(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    _ = r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]interface{}{
-        "cpu_usage":   0,
-        "memory_usage": 0,
-        "disk_io":     0,
-        "network_io":  0,
-    })
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	if s.vmHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "handler not available"})
+		return
+	}
+	stats, err := s.vmHandler.GetVMStats(r.Context(), id)
+	if err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusOK, stats)
 }
 
 // handleListStoragePools returns all storage pools.

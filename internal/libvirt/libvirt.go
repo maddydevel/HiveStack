@@ -14,6 +14,7 @@ type Libvirt struct {
     mu        sync.Mutex
     uri       string
     connected bool
+    domstats  domstatsFunc // reads raw VM counters; nil means run virsh
 }
 
 // NewLibvirt creates a Libvirt wrapper for the given URI.

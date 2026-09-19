@@ -240,6 +240,7 @@ const (
     CommandType_VMSnapshot     CommandType = 6
     CommandType_VMDestroy      CommandType = 7
     CommandType_VMResize       CommandType = 8
+    CommandType_VMGetStats     CommandType = 9
     CommandType_StorageCreate  CommandType = 100
     CommandType_StorageDelete  CommandType = 101
     CommandType_NetworkCreate  CommandType = 200
