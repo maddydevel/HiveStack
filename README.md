@@ -33,7 +33,7 @@ Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 | KIWI appliance | ✅ | SLES 15 SP7 appliance packaging with first-boot initialization |
 | Web UI | ✅ | React 18 + TypeScript + Vite + Tailwind (303KB JS, 15 pages) |
 | HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
-| Security hardening | 🔲 | TLS/mTLS, secrets mgmt, disk encryption, AppArmor (planned) |
+| Security hardening | ✅ | TLS 1.3, mTLS gRPC, Vault/SOPS secrets, AppArmor, LUKS, rate limiting |
 | VMware migration | 🔲 | Low priority, skip in first stable version |
 | SLOs & capacity | 🔲 | Definition + enforcement (planned) |
 
