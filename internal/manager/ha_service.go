@@ -97,7 +97,7 @@ type eventPublisherAdapter struct {
 
 func (e *eventPublisherAdapter) Publish(ctx context.Context, eventType, severity, message, actorType, actorID, actorName,
 	resourceType, resourceID, resourceName string) error {
-	return e.manager.publishEvent(ctx, "", severity, message,
+	return e.manager.publishTypedEvent(ctx, "", eventType, severity, message,
 		actorType, actorID, actorName, resourceType, resourceID, resourceName)
 }
 
@@ -155,10 +155,9 @@ func (s *haService) Start(ctx context.Context) error {
 		return fmt.Errorf("HA service already running")
 	}
 
-	// Create heartbeat processor with state transition callback
-	processor := ha.NewHeartbeatProcessor(s.thresholds, func(nodeID string, oldState, newState ha.HealthState, vms []string) {
-		s.onStateTransition(ctx, nodeID, oldState, newState, vms)
-	})
+	// Create heartbeat processor. State transitions are handled (logged and
+	// published as events) by the controller.
+	processor := ha.NewHeartbeatProcessor(s.thresholds, nil)
 
 	// Create orchestrator config
 	orchConfig := ha.OrchestratorConfig{
@@ -167,7 +166,6 @@ func (s *haService) Start(ctx context.Context) error {
 		VMProvider:     s,
 		HostProvider:   s,
 		VMRestarter:    &vmRestartAdapter{manager: s.manager},
-		EventPublisher: &eventPublisherAdapter{manager: s.manager},
 		Policy:         ha.DefaultPolicy(),
 	}
 
@@ -177,7 +175,9 @@ func (s *haService) Start(ctx context.Context) error {
 	}
 	s.haOrchestrator = orchestrator
 
-	// Create controller config
+	// Create controller config. The controller owns HA event publishing (node
+	// health and failover lifecycle), so the orchestrator is not given a
+	// publisher of its own — that would emit every failover event twice.
 	ctrlConfig := ha.ControllerConfig{
 		HeartbeatProcessor: processor,
 		Orchestrator:       orchestrator,
@@ -185,8 +185,7 @@ func (s *haService) Start(ctx context.Context) error {
 		Scheduler:          s.scheduler,
 		Threshold:          s.thresholds,
 		FailoverTimeout:    5 * time.Minute,
-		MetricsCallback:    s.onMetrics,
-		EventCallback:      s.onEvent,
+		EventPublisher:     &eventPublisherAdapter{manager: s.manager},
 	}
 
 	controller, err := ha.NewController(ctrlConfig)
@@ -273,35 +272,6 @@ func (s *haService) registerExistingNodes() {
 	for _, h := range hosts {
 		s.controller.RegisterNode(h.ID)
 	}
-}
-
-// onStateTransition is called when a node's health state changes.
-func (s *haService) onStateTransition(ctx context.Context, nodeID string, oldState, newState ha.HealthState, vms []string) {
-	log.Printf("[HA-Service] State transition for node %s: %s -> %s (affected VMs: %d)",
-		nodeID, oldState, newState, len(vms))
-
-	switch newState {
-	case ha.StateSuspect:
-		s.manager.publishEvent(ctx, "", "warning",
-			fmt.Sprintf("Node %s is suspect (missed heartbeats)", nodeID),
-			"system", "ha-service", "HA Service", "host", nodeID, nodeID)
-
-	case ha.StateOffline:
-		s.manager.publishEvent(ctx, "", "critical",
-			fmt.Sprintf("Node %s is offline, initiating failover for %d VMs", nodeID, len(vms)),
-			"system", "ha-service", "HA Service", "host", nodeID, nodeID)
-	}
-}
-
-// onMetrics handles HA metrics updates.
-func (s *haService) onMetrics(metric string, value float64, labels map[string]string) {
-	// In production, forward to Prometheus or metrics backend
-	log.Printf("[HA-Service] Metric: %s = %v (labels: %v)", metric, value, labels)
-}
-
-// onEvent handles HA events.
-func (s *haService) onEvent(eventType, severity, message string) {
-	log.Printf("[HA-Service] Event [%s/%s]: %s", eventType, severity, message)
 }
 
 // ---------- ha.VMProvider interface ----------

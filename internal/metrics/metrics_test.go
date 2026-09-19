@@ -2,8 +2,10 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestUpdateHostMetrics_SetsValues(t *testing.T) {
@@ -90,4 +92,90 @@ func TestGlobalMetrics_NoPanic(t *testing.T) {
 	if !found {
 		t.Error("expected hivestack_node_host_cpu_usage_percent metric to be present")
 	}
+}
+func TestUpdateHAHealthMetrics(t *testing.T) {
+	tests := []struct {
+		name                     string
+		online, suspect, offline int
+	}{
+		{"all healthy", 5, 0, 0},
+		{"one suspect", 4, 1, 0},
+		{"mixed", 2, 1, 2},
+		{"empty cluster", 0, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			UpdateHAHealthMetrics(tt.online, tt.suspect, tt.offline)
+
+			got := map[string]float64{
+				"online":  testutil.ToFloat64(HANodesOnline.WithLabelValues(HAClusterHostID)),
+				"suspect": testutil.ToFloat64(HANodesSuspect.WithLabelValues(HAClusterHostID)),
+				"offline": testutil.ToFloat64(HANodesOffline.WithLabelValues(HAClusterHostID)),
+			}
+			want := map[string]float64{
+				"online":  float64(tt.online),
+				"suspect": float64(tt.suspect),
+				"offline": float64(tt.offline),
+			}
+			for state, w := range want {
+				if got[state] != w {
+					t.Errorf("ha_nodes_%s = %v, want %v", state, got[state], w)
+				}
+			}
+		})
+	}
+}
+
+func TestRecordFailover(t *testing.T) {
+	totalBefore := testutil.ToFloat64(HAFailoverTotal)
+	countBefore, sumBefore := histogramCountAndSum(t, HAFailoverDurationSeconds)
+
+	RecordFailover(1500 * time.Millisecond)
+	RecordFailover(30 * time.Second)
+
+	if got := testutil.ToFloat64(HAFailoverTotal) - totalBefore; got != 2 {
+		t.Errorf("ha_failover_total delta = %v, want 2", got)
+	}
+	count, sum := histogramCountAndSum(t, HAFailoverDurationSeconds)
+	if got := count - countBefore; got != 2 {
+		t.Errorf("ha_failover_duration_seconds count delta = %d, want 2", got)
+	}
+	if got := sum - sumBefore; got != 31.5 {
+		t.Errorf("ha_failover_duration_seconds sum delta = %v, want 31.5", got)
+	}
+}
+
+func TestRecordFencing(t *testing.T) {
+	tests := []struct {
+		method string
+		calls  int
+	}{
+		{"ipmi", 1},
+		{"redfish", 2},
+		{"ssh", 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method, func(t *testing.T) {
+			before := testutil.ToFloat64(HAFencingTotal.WithLabelValues(tt.method))
+			for i := 0; i < tt.calls; i++ {
+				RecordFencing(tt.method)
+			}
+			got := testutil.ToFloat64(HAFencingTotal.WithLabelValues(tt.method)) - before
+			if got != float64(tt.calls) {
+				t.Errorf("ha_fencing_total{method=%q} delta = %v, want %d", tt.method, got, tt.calls)
+			}
+		})
+	}
+}
+
+func histogramCountAndSum(t *testing.T, h prometheus.Histogram) (uint64, float64) {
+	t.Helper()
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(h)
+	families, err := reg.Gather()
+	if err != nil || len(families) != 1 || len(families[0].GetMetric()) != 1 {
+		t.Fatalf("gather histogram: families=%d err=%v", len(families), err)
+	}
+	hist := families[0].GetMetric()[0].GetHistogram()
+	return hist.GetSampleCount(), hist.GetSampleSum()
 }

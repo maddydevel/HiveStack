@@ -5,6 +5,8 @@
 package metrics
 
 import (
+    "time"
+
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -186,6 +188,60 @@ var (
     )
 )
 
+// HAClusterHostID is the host_id label value used for cluster-wide HA node
+// counts, which are aggregated across every monitored node.
+const HAClusterHostID = "cluster"
+
+// HA metrics
+var (
+    HANodesOnline = promauto.NewGaugeVec(
+        prometheus.GaugeOpts{
+            Name: "ha_nodes_online",
+            Help: "Number of HA-monitored nodes in the online state",
+        },
+        []string{"host_id"},
+    )
+
+    HANodesSuspect = promauto.NewGaugeVec(
+        prometheus.GaugeOpts{
+            Name: "ha_nodes_suspect",
+            Help: "Number of HA-monitored nodes in the suspect state (missed heartbeats)",
+        },
+        []string{"host_id"},
+    )
+
+    HANodesOffline = promauto.NewGaugeVec(
+        prometheus.GaugeOpts{
+            Name: "ha_nodes_offline",
+            Help: "Number of HA-monitored nodes in the offline state",
+        },
+        []string{"host_id"},
+    )
+
+    HAFailoverTotal = promauto.NewCounter(
+        prometheus.CounterOpts{
+            Name: "ha_failover_total",
+            Help: "Total number of completed HA failovers",
+        },
+    )
+
+    HAFailoverDurationSeconds = promauto.NewHistogram(
+        prometheus.HistogramOpts{
+            Name:    "ha_failover_duration_seconds",
+            Help:    "Duration of completed HA failovers in seconds",
+            Buckets: []float64{1, 5, 10, 30, 60, 120, 180, 300},
+        },
+    )
+
+    HAFencingTotal = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "ha_fencing_total",
+            Help: "Total number of successful node fencing operations by method",
+        },
+        []string{"method"},
+    )
+)
+
 // System metrics
 var (
     ManagerUp = promauto.NewGauge(
@@ -263,6 +319,26 @@ func UpdateClusterMetrics(clusterID, clusterName string, vmCount, hostCount, tot
     ClusterHostCount.WithLabelValues(clusterID, clusterName).Set(float64(hostCount))
     ClusterTotalCPU.WithLabelValues(clusterID, clusterName).Set(float64(totalCPU))
     ClusterTotalMemoryBytes.WithLabelValues(clusterID, clusterName).Set(float64(totalMemory))
+}
+
+// UpdateHAHealthMetrics records the cluster-wide count of HA-monitored nodes
+// in each health state.
+func UpdateHAHealthMetrics(online, suspect, offline int) {
+    HANodesOnline.WithLabelValues(HAClusterHostID).Set(float64(online))
+    HANodesSuspect.WithLabelValues(HAClusterHostID).Set(float64(suspect))
+    HANodesOffline.WithLabelValues(HAClusterHostID).Set(float64(offline))
+}
+
+// RecordFailover records a completed HA failover and how long it took.
+func RecordFailover(duration time.Duration) {
+    HAFailoverTotal.Inc()
+    HAFailoverDurationSeconds.Observe(duration.Seconds())
+}
+
+// RecordFencing records a successful fencing operation for the given method
+// (e.g. "ipmi", "redfish", "ssh").
+func RecordFencing(method string) {
+    HAFencingTotal.WithLabelValues(method).Inc()
 }
 
 // SetManagerUp sets the manager health metric.

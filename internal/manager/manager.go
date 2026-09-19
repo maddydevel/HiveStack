@@ -202,12 +202,19 @@ func GetAgentStatus(agent *node.Agent) (string, bool) {
 	return "running", true
 }
 
-// publishEvent inserts an event record into the events table.
+// publishEvent inserts an event record of type "info" into the events table.
 func (m *Manager) publishEvent(ctx context.Context, tenantID, severity, message,
+	actorType, actorID, actorName, resourceType, resourceID, resourceName string) error {
+	return m.publishTypedEvent(ctx, tenantID, "info", severity, message,
+		actorType, actorID, actorName, resourceType, resourceID, resourceName)
+}
+
+// publishTypedEvent inserts an event record with an explicit type into the events table.
+func (m *Manager) publishTypedEvent(ctx context.Context, tenantID, eventType, severity, message,
 	actorType, actorID, actorName, resourceType, resourceID, resourceName string) error {
 	_, err := m.store.CreateEvent(ctx, &db.Event{
 		TenantID:     tenantID,
-		Type:         "info",
+		Type:         eventType,
 		Severity:     severity,
 		Message:      message,
 		ActorType:    actorType,

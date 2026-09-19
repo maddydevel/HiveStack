@@ -10,7 +10,21 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/maddydevel/HiveStack/internal/metrics"
 )
+
+// Event types published by the controller.
+const (
+	EventNodeSuspect      = "ha_node_suspect"
+	EventNodeOffline      = "ha_node_offline"
+	EventFailoverStarted  = "ha_failover_started"
+	EventFailoverComplete = "ha_failover_complete"
+	EventFailoverFailed   = "ha_failover_failed"
+)
+
+// eventPublishTimeout bounds how long publishing a single event may take.
+const eventPublishTimeout = 5 * time.Second
 
 // Controller manages the HA subsystem: runs the health check ticker,
 // detects failures, and invokes the orchestrator.
@@ -27,6 +41,8 @@ type Controller struct {
 	failoverTimeout   time.Duration
 	metricsCallback   func(metric string, value float64, labels map[string]string)
 	eventCallback     func(eventType, severity, message string)
+	eventPublisher    EventPublisher
+	inFlight          map[string]struct{} // nodes with a failover currently running
 }
 
 // ControllerConfig holds configuration for the HA controller.
@@ -39,6 +55,9 @@ type ControllerConfig struct {
 	FailoverTimeout    time.Duration
 	MetricsCallback    func(metric string, value float64, labels map[string]string)
 	EventCallback      func(eventType, severity, message string)
+	// EventPublisher, if set, receives every HA event the controller raises
+	// (in addition to EventCallback).
+	EventPublisher EventPublisher
 }
 
 // NewController creates a new HA controller.
@@ -62,6 +81,8 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		failoverTimeout: cfg.FailoverTimeout,
 		metricsCallback: cfg.MetricsCallback,
 		eventCallback:   cfg.EventCallback,
+		eventPublisher:  cfg.EventPublisher,
+		inFlight:        make(map[string]struct{}),
 	}, nil
 }
 
@@ -143,13 +164,14 @@ func (c *Controller) reconcile(ctx context.Context) {
 	}
 
 	// Update metrics
+	online := len(c.processor.GetOnlineNodes())
+	suspect := len(c.processor.GetSuspectNodes())
+	offline := len(c.processor.GetOfflineNodes())
+	metrics.UpdateHAHealthMetrics(online, suspect, offline)
 	if c.metricsCallback != nil {
-		online := c.processor.GetOnlineNodes()
-		suspect := c.processor.GetSuspectNodes()
-		offline := c.processor.GetOfflineNodes()
-		c.metricsCallback("ha_nodes_online", float64(len(online)), nil)
-		c.metricsCallback("ha_nodes_suspect", float64(len(suspect)), nil)
-		c.metricsCallback("ha_nodes_offline", float64(len(offline)), nil)
+		c.metricsCallback("ha_nodes_online", float64(online), nil)
+		c.metricsCallback("ha_nodes_suspect", float64(suspect), nil)
+		c.metricsCallback("ha_nodes_offline", float64(offline), nil)
 	}
 }
 
@@ -160,35 +182,100 @@ func (c *Controller) handleTransition(ctx context.Context, t StateTransition) {
 
 	switch t.NewState {
 	case StateSuspect:
-		if c.eventCallback != nil {
-			c.eventCallback("ha_node_suspect", "warning",
-				fmt.Sprintf("Node %s is suspect (missed heartbeats)", t.NodeID))
-		}
+		c.emit(ctx, EventNodeSuspect, "warning", t.NodeID,
+			fmt.Sprintf("Node %s is suspect (missed heartbeats)", t.NodeID))
 	case StateOffline:
-		if c.eventCallback != nil {
-			c.eventCallback("ha_node_offline", "critical",
-				fmt.Sprintf("Node %s is offline, initiating failover", t.NodeID))
-		}
+		c.emit(ctx, EventNodeOffline, "critical", t.NodeID,
+			fmt.Sprintf("Node %s is offline, initiating failover", t.NodeID))
 		// Trigger failover asynchronously
 		go c.triggerFailover(ctx, t.NodeID)
 	}
 }
 
+// emit delivers an HA event to the EventCallback and the EventPublisher.
+// Publishing runs detached from ctx's cancellation so that failover outcomes
+// are still recorded when the failover context timed out or the controller is
+// shutting down.
+func (c *Controller) emit(ctx context.Context, eventType, severity, nodeID, message string) {
+	if c.eventCallback != nil {
+		c.eventCallback(eventType, severity, message)
+	}
+	if c.eventPublisher == nil {
+		return
+	}
+
+	pubCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), eventPublishTimeout)
+	defer cancel()
+	if err := c.eventPublisher.Publish(pubCtx, eventType, severity, message,
+		"system", "ha-controller", "HA Controller", "host", nodeID, nodeID); err != nil {
+		log.Printf("[HA/Controller] Failed to publish %s event for node %s: %v", eventType, nodeID, err)
+	}
+}
+
+// beginFailover marks a failover as running for nodeID. It returns false if
+// one is already running.
+func (c *Controller) beginFailover(nodeID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, running := c.inFlight[nodeID]; running {
+		return false
+	}
+	c.inFlight[nodeID] = struct{}{}
+	return true
+}
+
+func (c *Controller) endFailover(nodeID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.inFlight, nodeID)
+}
+
 // triggerFailover starts the failover process for a failed node.
 func (c *Controller) triggerFailover(ctx context.Context, nodeID string) {
+	if !c.beginFailover(nodeID) {
+		log.Printf("[HA/Controller] Failover already in progress for node %s, skipping", nodeID)
+		return
+	}
+	defer c.endFailover(nodeID)
+
 	log.Printf("[HA/Controller] Triggering failover for node %s", nodeID)
+	c.emit(ctx, EventFailoverStarted, "warning", nodeID,
+		fmt.Sprintf("Failover started for node %s", nodeID))
 
 	// Create a timeout context for the failover operation
 	failoverCtx, cancel := context.WithTimeout(ctx, c.failoverTimeout)
 	defer cancel()
 
+	start := time.Now()
 	if err := c.orchestrator.HandleHostFailure(failoverCtx, nodeID); err != nil {
 		log.Printf("[HA/Controller] Failover for node %s failed: %v", nodeID, err)
-		if c.eventCallback != nil {
-			c.eventCallback("ha_failover_failed", "error",
-				fmt.Sprintf("Failover for node %s failed: %v", nodeID, err))
+		c.emit(ctx, EventFailoverFailed, "error", nodeID,
+			fmt.Sprintf("Failover for node %s failed: %v", nodeID, err))
+		return
+	}
+	metrics.RecordFailover(time.Since(start))
+
+	severity, message := "info", fmt.Sprintf("Failover for node %s complete", nodeID)
+	if rec, ok := c.findFailoverRecord(nodeID, start); ok {
+		message = fmt.Sprintf("Failover for node %s complete: %d/%d VMs restarted",
+			nodeID, rec.VMRestarted, rec.VMCount)
+		if rec.VMFailed > 0 {
+			severity = "warning"
 		}
 	}
+	c.emit(ctx, EventFailoverComplete, severity, nodeID, message)
+}
+
+// findFailoverRecord returns the orchestrator's record of the failover for
+// nodeID that started at or after since.
+func (c *Controller) findFailoverRecord(nodeID string, since time.Time) (FailoverRecord, bool) {
+	history := c.orchestrator.GetFailoverHistory(0)
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].NodeID == nodeID && !history[i].StartedAt.Before(since) {
+			return history[i], true
+		}
+	}
+	return FailoverRecord{}, false
 }
 
 // RegisterNode adds a node to health monitoring.

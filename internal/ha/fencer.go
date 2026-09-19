@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maddydevel/HiveStack/internal/metrics"
 )
 
 // FenceMethod describes the mechanism used to fence a node.
@@ -251,6 +253,7 @@ func (f *IPMIFencer) Fence(ctx context.Context, nodeID string) error {
 	}
 
 	log.Printf("[HA/Fence/IPMI] Node %s (%s) powered off: %s", nodeID, addr, strings.TrimSpace(string(output)))
+	metrics.RecordFencing(string(FenceMethodIPMI))
 	return nil
 }
 
@@ -310,6 +313,7 @@ func (f *RedfishFencer) Fence(ctx context.Context, nodeID string) error {
 	}
 
 	log.Printf("[HA/Fence/Redfish] Node %s (%s) powered off: %s", nodeID, url, string(output))
+	metrics.RecordFencing(string(FenceMethodRedfish))
 	return nil
 }
 
@@ -385,12 +389,14 @@ func (f *SSHFencer) Fence(ctx context.Context, nodeID string) error {
 			strings.Contains(err.Error(), "signal: killed") ||
 			strings.Contains(err.Error(), "exit status 255") {
 			log.Printf("[HA/Fence/SSH] Node %s powered off (SSH session terminated)", nodeID)
+			metrics.RecordFencing(string(FenceMethodSSH))
 			return nil
 		}
 		return fmt.Errorf("ssh poweroff failed: %w (output: %s)", err, string(output))
 	}
 
 	log.Printf("[HA/Fence/SSH] Node %s powered off", nodeID)
+	metrics.RecordFencing(string(FenceMethodSSH))
 	return nil
 }
 
