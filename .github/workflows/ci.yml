@@ -1,8 +1,8 @@
-name: Build and Test
+name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 
@@ -11,6 +11,9 @@ env:
   GOLANGCI_VERSION: "v1.59"
 
 jobs:
+  # ==========================================================================
+  # Job 1: Build all binaries
+  # ==========================================================================
   build:
     runs-on: ubuntu-latest
     steps:
@@ -32,17 +35,151 @@ jobs:
       - name: Build CLI
         run: go build -o bin/hive ./cmd/hive
 
+      - name: Build Manager
+        run: go build -o bin/hive-manager ./cmd/hive-manager
+
       - name: Build Node Agent
         run: go build -o bin/hive-node ./node/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hive-binaries
+          name: hive-binaries-${{ github.sha }}
           path: bin/
           retention-days: 7
 
+  # ==========================================================================
+  # Job 2: Unit tests with coverage
+  # ==========================================================================
   test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: hivestack_test
+          POSTGRES_USER: hivestack
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      HIVESTACK_DSN: "postgres://hivestack:test-password@localhost:5432/hivestack_test?sslmode=disable"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: go test ./internal/... ./pkg/... -v -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.html
+          retention-days: 14
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "ERROR: Coverage ${COVERAGE}% is below 60% threshold"
+            exit 1
+          fi
+
+  # ==========================================================================
+  # Job 3: Integration tests
+  # ==========================================================================
+  integration-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: hivestack_test
+          POSTGRES_USER: hivestack
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      HIVESTACK_DSN: "postgres://hivestack:test-password@localhost:5432/hivestack_test?sslmode=disable"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run database migrations
+        run: |
+          for f in internal/db/migrations/*.sql; do
+            PGPASSWORD=test-password psql -h localhost -U hivestack -d hivestack_test -f "$f"
+          done
+
+      - name: Run integration tests
+        run: go test ./tests/... -v -tags=integration -timeout=15m
+
+  # ==========================================================================
+  # Job 4: Lint
+  # ==========================================================================
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files need formatting:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+  # ==========================================================================
+  # Job 5: Security scanning
+  # ==========================================================================
+  security:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,41 +194,28 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
-        run: go test ./... -v -race -coverprofile=coverage.out
-
-      - name: Security scan
+      - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck ./...
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
         with:
-          name: coverage
-          path: coverage.out
-          retention-days: 7
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+          args: '-fmt sarif -out results.sarif ./...'
+      
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
+          sarif_file: results.sarif
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: ${{ env.GOLANGCI_VERSION }}
-          args: --timeout=10m
+      - name: Run Nancy (dependency audit)
+        run: |
+          go list -json -m all | nancy sleuth
 
-      - name: Run golangci-lint
-        run: golangci-lint run ./...
-
-  validate-openapi:
+  # ==========================================================================
+  # Job 6: Validate OpenAPI spec
+  # ==========================================================================
+  validate-api:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -109,9 +233,6 @@ jobs:
       - name: Validate OpenAPI can generate Go client
         run: |
           java -jar /tmp/openapi-generator.jar validate -i api/openapi.yaml
-
-      - name: Generate Go client (check)
-        run: |
           mkdir -p /tmp/gen-client
           java -jar /tmp/openapi-generator.jar generate \
             -i api/openapi.yaml \
@@ -119,3 +240,54 @@ jobs:
             -o /tmp/gen-client \
             --skip-validate-spec
           echo "OpenAPI spec is valid and generates Go client successfully"
+
+  # ==========================================================================
+  # Job 7: Build container images
+  # ==========================================================================
+  build-image:
+    runs-on: ubuntu-latest
+    needs: [build, test, lint, security]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: hive-binaries-${{ github.sha }}
+          path: bin/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: appliance/Dockerfile
+          push: false
+          load: true
+          tags: hivestack:ci-test
+          build-args: |
+            VERSION=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+
+      - name: Test container image
+        run: |
+          docker run --rm hivestack:ci-test manager --version
+          docker run --rm hivestack:ci-test node --version
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: hivestack:ci-test
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

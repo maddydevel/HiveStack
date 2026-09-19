@@ -1,0 +1,226 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GO_VERSION: "1.26"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ==========================================================================
+  # Job 1: Verify tag and run final checks
+  # ==========================================================================
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify tag matches version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "Release version: ${TAG}"
+          echo "TAG_VERSION=${TAG}" >> $GITHUB_ENV
+
+      - name: Run all tests
+        run: |
+          go mod download
+          go test ./... -race -count=1
+
+  # ==========================================================================
+  # Job 2: Build release binaries (all platforms)
+  # ==========================================================================
+  build:
+    runs-on: ubuntu-latest
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, suffix: linux-amd64 }
+          - { goos: linux, goarch: arm64, suffix: linux-arm64 }
+          - { goos: darwin, goarch: amd64, suffix: darwin-amd64 }
+          - { goos: darwin, goarch: arm64, suffix: darwin-arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TAG_VERSION: ${{ env.TAG_VERSION }}
+        run: |
+          mkdir -p dist
+
+          # Build Manager
+          CGO_ENABLED=0 go build \
+            -ldflags="-w -s -X main.version=${TAG_VERSION} -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=${{ github.sha }}" \
+            -o dist/hive-manager-${{ matrix.suffix }} ./cmd/hive-manager
+
+          # Build Node Agent
+          CGO_ENABLED=0 go build \
+            -ldflags="-w -s -X main.version=${TAG_VERSION} -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=${{ github.sha }}" \
+            -o dist/hive-node-${{ matrix.suffix }} ./node/
+
+          # Build CLI
+          CGO_ENABLED=0 go build \
+            -ldflags="-w -s -X main.version=${TAG_VERSION} -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=${{ github.sha }}" \
+            -o dist/hive-${{ matrix.suffix }} ./cmd/hive
+
+      - name: Create archive
+        env:
+          TAG_VERSION: ${{ env.TAG_VERSION }}
+        run: |
+          cd dist
+          for bin in hive-manager hive-node hive; do
+            tar czf "hivestack-${TAG_VERSION}-${{ matrix.suffix }}.tar.gz" \
+              "${bin}-${{ matrix.suffix }}" \
+              -C ../ LICENSE \
+            ../README.md \
+            ../configs/manager.yaml.example \
+            ../configs/node.yaml.example
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.suffix }}
+          path: dist/*.tar.gz
+
+  # ==========================================================================
+  # Job 3: Build and push container images
+  # ==========================================================================
+  container:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: appliance/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.TAG_VERSION }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+
+  # ==========================================================================
+  # Job 4: Create GitHub Release with artifacts
+  # ==========================================================================
+  release:
+    runs-on: ubuntu-latest
+    needs: [build, container]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: release-*
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            CHANGELOG=$(git log --oneline --no-decorate)
+          else
+            CHANGELOG=$(git log --oneline --no-decorate ${LAST_TAG}..HEAD)
+          fi
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "HiveStack ${{ env.TAG_VERSION }}"
+          body: |
+            ## HiveStack ${{ env.TAG_VERSION }}
+
+            ### What's Changed
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ### Container Images
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG_VERSION }}`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
+
+            ### Installation
+            ```bash
+            # Pull container image
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG_VERSION }}
+
+            # Or download binary release
+            # See attached assets for your platform
+            ```
+
+            ### Quick Start
+            ```bash
+            # Run with docker compose
+            docker compose -f appliance/docker-compose.yaml up -d
+            ```
+
+            See [docs/RELEASE.md](docs/RELEASE.md) for full release notes and upgrade instructions.
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          files: |
+            release-artifacts/**/*.tar.gz

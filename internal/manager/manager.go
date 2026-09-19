@@ -53,128 +53,176 @@ type Manager struct {
 	migrations map[string]db.VM
 }
 
-// vmStore is the subset of the database that MigrateVM and publishEvent use.
+// vmStore is the subset of the database that Manager methods use.
 // *db.DB satisfies it; tests substitute an in-memory fake.
 type vmStore interface {
+	// VM operations
 	GetVM(ctx context.Context, id string) (*db.VM, error)
-	GetHost(ctx context.Context, id string) (*db.Host, error)
 	ListVMs(ctx context.Context, tenantID string) ([]db.VM, error)
 	UpdateVM(ctx context.Context, id string, updates map[string]interface{}) error
+	CreateVM(ctx context.Context, vm *db.VM) (string, error)
+	DeleteVM(ctx context.Context, id string) error
+	// Host operations
+	GetHost(ctx context.Context, id string) (*db.Host, error)
+	ListHosts(ctx context.Context, tenantID string) ([]db.Host, error)
+	CreateHost(ctx context.Context, h *db.Host) (string, error)
+	UpdateHost(ctx context.Context, id string, updates map[string]interface{}) error
+	DeleteHost(ctx context.Context, id string) error
+	// Event operations
 	CreateEvent(ctx context.Context, e *db.Event) (string, error)
+	// Disk operations
 	GetDisk(ctx context.Context, id string) (*db.Disk, error)
 	UpdateDisk(ctx context.Context, id string, updates map[string]interface{}) error
+	// Storage pool operations
 	GetStoragePool(ctx context.Context, id string) (*db.StoragePool, error)
+	// Network operations
+	CreateNetwork(ctx context.Context, n *db.Network) (string, error)
+	GetNetwork(ctx context.Context, id string) (*db.Network, error)
+	DeleteNetwork(ctx context.Context, id string) error
 }
 
 var _ vmStore = (*db.DB)(nil)
 
 // New creates a new HiveStack Manager.
 func New(database *db.DB) (*Manager, error) {
-    rbac := auth.NewRBACEngine()
-    compliance := compliance.NewComplianceStore(database)
-    nodes := make(map[string]*node.Agent)
+	rbac := auth.NewRBACEngine()
+	compliance := compliance.NewComplianceStore(database)
+	nodes := make(map[string]*node.Agent)
 
-    m := &Manager{
-        db:         database,
-        store:      database,
-        rbac:       rbac,
-        compliance: compliance,
-        nodes:      nodes,
-        controllers: make(map[string]node.VMController),
-        shutdownCh: make(chan struct{}),
-    }
+	m := &Manager{
+		db:         database,
+		store:      database,
+		rbac:       rbac,
+		compliance: compliance,
+		nodes:      nodes,
+		controllers: make(map[string]node.VMController),
+		shutdownCh: make(chan struct{}),
+	}
 
-    // Create the HA service (does not start it yet)
-    haSvc, err := NewHAService(m, ha.DefaultThresholds())
-    if err != nil {
-        return nil, fmt.Errorf("create HA service: %w", err)
-    }
-    m.haSvc = haSvc
+	// Create the HA service (does not start it yet)
+	haSvc, err := NewHAService(m, ha.DefaultThresholds())
+	if err != nil {
+		return nil, fmt.Errorf("create HA service: %w", err)
+	}
+	m.haSvc = haSvc
 
-    return m, nil
+	return m, nil
+}
+
+// NewTestManager creates a Manager for testing with a mock store.
+// This is the test-only constructor that allows injecting a mock vmStore.
+func NewTestManager(store vmStore) (*Manager, error) {
+	rbac := auth.NewRBACEngine()
+	complianceStore := compliance.NewComplianceStore(nil) // nil DB is OK for tests that don't record evidence
+	nodes := make(map[string]*node.Agent)
+
+	m := &Manager{
+		store:       store,
+		rbac:        rbac,
+		compliance:  complianceStore,
+		nodes:       nodes,
+		controllers: make(map[string]node.VMController),
+		shutdownCh:  make(chan struct{}),
+		migrations:  make(map[string]db.VM),
+	}
+
+	// Create the HA service (does not start it yet)
+	haSvc, err := NewHAService(m, ha.DefaultThresholds())
+	if err != nil {
+		return nil, fmt.Errorf("create HA service: %w", err)
+	}
+	m.haSvc = haSvc
+
+	return m, nil
+}
+
+// SetDB sets the database connection (used for API server creation).
+// In tests, this is typically not needed since we don't call Run().
+func (m *Manager) SetDB(database *db.DB) {
+	m.db = database
 }
 
 // Run starts the Manager: initializes the API server and starts the main service loop.
 func (m *Manager) Run(ctx context.Context, apiAddr string) error {
-    m.mu.Lock()
-    if m.running {
-        m.mu.Unlock()
-        return fmt.Errorf("manager already running")
-    }
-    m.running = true
-    m.mu.Unlock()
+	m.mu.Lock()
+	if m.running {
+		m.mu.Unlock()
+		return fmt.Errorf("manager already running")
+	}
+	m.running = true
+	m.mu.Unlock()
 
-    log.Println("HiveStack Manager starting...")
+	log.Println("HiveStack Manager starting...")
 
-    // Start the HA service before the API server so HA data is available
-    if err := m.haSvc.Start(ctx); err != nil {
-        return fmt.Errorf("start HA service: %w", err)
-    }
+	// Start the HA service before the API server so HA data is available
+	if err := m.haSvc.Start(ctx); err != nil {
+		return fmt.Errorf("start HA service: %w", err)
+	}
 
-    cfg := &api.Config{
-        Server: api.ServerConfig{
-            Host:       "0.0.0.0",
-            Port:       8080,
-            TLSEnabled: false,
-        },
-        TLS: hivetls.CertConfig{
-            CertFile: "", // set from config if TLS enabled
-            KeyFile:  "",
-            CAFile:   "",
-        },
-        Database: api.DatabaseConfig{
-            DSN: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable",
-        },
-        Auth: api.AuthConfig{
-            JWTSecret:   "change-me-in-production",
-            TokenExpiry: "24h",
-        },
-        Node: api.NodeConfig{
-            GRPCAddress: "hivestack-manager:9090",
-        },
-    }
+	cfg := &api.Config{
+		Server: api.ServerConfig{
+			Host:       "0.0.0.0",
+			Port:       8080,
+			TLSEnabled: false,
+		},
+		TLS: hivetls.CertConfig{
+			CertFile: "", // set from config if TLS enabled
+			KeyFile:  "",
+			CAFile:   "",
+		},
+		Database: api.DatabaseConfig{
+			DSN: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable",
+		},
+		Auth: api.AuthConfig{
+			JWTSecret:   "change-me-in-production",
+			TokenExpiry: "24h",
+		},
+		Node: api.NodeConfig{
+			GRPCAddress: "hivestack-manager:9090",
+		},
+	}
 
-    apiServer, err := api.New(cfg, m.db)
-    if err != nil {
-        return fmt.Errorf("create API server: %w", err)
-    }
-    m.apiServer = apiServer
+	apiServer, err := api.New(cfg, m.db)
+	if err != nil {
+		return fmt.Errorf("create API server: %w", err)
+	}
+	m.apiServer = apiServer
 
-    // Wire HA dependencies into the API server
-    m.wireHAIntoAPI()
-    m.apiServer.SetVMHandler(m)
-    m.apiServer.SetStorageHandler(m)
-    m.apiServer.SetNetworkHandler(m)
-    m.apiServer.SetMigrationHandler(m)
+	// Wire HA dependencies into the API server
+	m.wireHAIntoAPI()
+	m.apiServer.SetVMHandler(m)
+	m.apiServer.SetStorageHandler(m)
+	m.apiServer.SetNetworkHandler(m)
+	m.apiServer.SetMigrationHandler(m)
 
-    m.wg.Add(1)
-    go func() {
-        defer m.wg.Done()
-        log.Printf("API server listening on %s", apiAddr)
-        if err := apiServer.Run(); err != nil && err != context.Canceled {
-            log.Printf("API server error: %v", err)
-        }
-    }()
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		log.Printf("API server listening on %s", apiAddr)
+		if err := apiServer.Run(); err != nil && err != context.Canceled {
+			log.Printf("API server error: %v", err)
+		}
+	}()
 
-    log.Println("HiveStack Manager running — API server active, RBAC engine loaded, compliance store ready")
+	log.Println("HiveStack Manager running — API server active, RBAC engine loaded, compliance store ready")
 
-    <-ctx.Done()
-    log.Println("Manager: shutdown signal received")
-    close(m.shutdownCh)
+	<-ctx.Done()
+	log.Println("Manager: shutdown signal received")
+	close(m.shutdownCh)
 
-    m.wg.Wait()
-    log.Println("Manager: stopped")
-    return nil
+	m.wg.Wait()
+	log.Println("Manager: stopped")
+	return nil
 }
 
 // RBAC returns the RBAC engine for permission checks.
 func (m *Manager) RBAC() *auth.RBACEngine {
-    return m.rbac
+	return m.rbac
 }
 
 // Compliance returns the compliance store for HANA guardrail operations.
 func (m *Manager) Compliance() *compliance.ComplianceStore {
-    return m.compliance
+	return m.compliance
 }
 
 // DB returns the database connection.
@@ -192,6 +240,12 @@ func roleFromContext(ctx context.Context) (string, bool) {
 // withRole returns a new context with the given role.
 func withRole(ctx context.Context, role string) context.Context {
 	return context.WithValue(ctx, roleContextKey{}, role)
+}
+
+// WithRole returns a new context with the given role.
+// This is exported for use in integration tests.
+func WithRole(ctx context.Context, role string) context.Context {
+	return withRole(ctx, role)
 }
 
 // GetAgentStatus returns the status string for a node agent.
@@ -269,7 +323,7 @@ func (m *Manager) CreateHost(ctx context.Context, name, hostname, ip, tan, label
 		MaintenanceMode: false,
 	}
 
-	id, err := m.db.CreateHost(ctx, host)
+	id, err := m.store.CreateHost(ctx, host)
 	if err != nil {
 		return "", fmt.Errorf("create host record: %w", err)
 	}
@@ -293,7 +347,7 @@ func (m *Manager) GetHost(ctx context.Context, id string) (*db.Host, error) {
 		return nil, fmt.Errorf("permission denied: %w", err)
 	}
 
-	host, err := m.db.GetHost(ctx, id)
+	host, err := m.store.GetHost(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get host: %w", err)
 	}
@@ -330,7 +384,7 @@ func (m *Manager) UpdateHost(ctx context.Context, id string, updates map[string]
 	// Validate maintenance mode toggle
 	if _, isMaintenance := updates["maintenance_mode"]; isMaintenance {
 		// Verify host exists before allowing maintenance mode change
-		existing, err := m.db.GetHost(ctx, id)
+		existing, err := m.store.GetHost(ctx, id)
 		if err != nil {
 			return fmt.Errorf("get host for validation: %w", err)
 		}
@@ -339,7 +393,7 @@ func (m *Manager) UpdateHost(ctx context.Context, id string, updates map[string]
 		log.Printf("Host %s maintenance mode: %v -> %v", existing.Name, existing.MaintenanceMode, newMode)
 	}
 
-	if err := m.db.UpdateHost(ctx, id, updates); err != nil {
+	if err := m.store.UpdateHost(ctx, id, updates); err != nil {
 		return fmt.Errorf("update host: %w", err)
 	}
 
@@ -359,7 +413,7 @@ func (m *Manager) DeleteHost(ctx context.Context, id string) error {
 	}
 
 	// Get host for name and tenant info
-	host, err := m.db.GetHost(ctx, id)
+	host, err := m.store.GetHost(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get host: %w", err)
 	}
@@ -367,7 +421,7 @@ func (m *Manager) DeleteHost(ctx context.Context, id string) error {
 	// Check for running VMs on this host
 	// In production, query VM table for running VMs with this host_id
 	// For now: check if any VMs are assigned to this host
-	vms, err := m.db.ListVMs(ctx, host.TenantID)
+	vms, err := m.store.ListVMs(ctx, host.TenantID)
 	if err != nil {
 		return fmt.Errorf("list VMs: %w", err)
 	}
@@ -378,7 +432,7 @@ func (m *Manager) DeleteHost(ctx context.Context, id string) error {
 	}
 
 	// Mark host as decommissioned
-	if err := m.db.UpdateHost(ctx, id, map[string]interface{}{
+	if err := m.store.UpdateHost(ctx, id, map[string]interface{}{
 		"status": "decommissioned",
 	}); err != nil {
 		return fmt.Errorf("mark host decommissioned: %w", err)
@@ -407,7 +461,7 @@ func (m *Manager) ListHosts(ctx context.Context) ([]*db.Host, error) {
 		return nil, fmt.Errorf("permission denied: %w", err)
 	}
 
-	hosts, err := m.db.ListHosts(ctx, "")
+	hosts, err := m.store.ListHosts(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("list hosts: %w", err)
 	}
@@ -466,7 +520,7 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 	}
 
 	// Validate host exists
-	host, err := m.db.GetHost(ctx, spec.HostID)
+	host, err := m.store.GetHost(ctx, spec.HostID)
 	if err != nil {
 		return "", fmt.Errorf("get host: %w", err)
 	}
@@ -574,7 +628,7 @@ func (m *Manager) allocateVM(ctx context.Context, host *db.Host, vm *db.VM) (str
 	m.allocMu.Lock()
 	defer m.allocMu.Unlock()
 
-	vms, err := m.db.ListVMs(ctx, host.TenantID)
+	vms, err := m.store.ListVMs(ctx, host.TenantID)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("list VMs for capacity check: %w", err)
 	}
@@ -584,7 +638,7 @@ func (m *Manager) allocateVM(ctx context.Context, host *db.Host, vm *db.VM) (str
 		return "", 0, 0, err
 	}
 
-	id, err := m.db.CreateVM(ctx, vm)
+	id, err := m.store.CreateVM(ctx, vm)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("create VM record: %w", err)
 	}
@@ -627,7 +681,7 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 		return fmt.Errorf("permission denied: %w", err)
 	}
 
-	vm, err := m.db.GetVM(ctx, id)
+	vm, err := m.store.GetVM(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get VM: %w", err)
 	}
@@ -653,7 +707,7 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 	}
 
 	// Update VM state
-	if err := m.db.UpdateVM(ctx, id, map[string]interface{}{
+	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"status": "running",
 	}); err != nil {
 		log.Printf("Warning: failed to update VM status: %v", err)
@@ -661,7 +715,7 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 
 	// Update started_at timestamp
 	now := time.Now()
-	if err := m.db.UpdateVM(ctx, id, map[string]interface{}{
+	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"started_at": now,
 	}); err != nil {
 		log.Printf("Warning: failed to update started_at: %v", err)
@@ -681,7 +735,7 @@ func (m *Manager) StopVM(ctx context.Context, id string) error {
 		return fmt.Errorf("permission denied: %w", err)
 	}
 
-	vm, err := m.db.GetVM(ctx, id)
+	vm, err := m.store.GetVM(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get VM: %w", err)
 	}
@@ -707,7 +761,7 @@ func (m *Manager) StopVM(ctx context.Context, id string) error {
 	}
 
 	// Update VM state
-	if err := m.db.UpdateVM(ctx, id, map[string]interface{}{
+	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"status": "stopped",
 	}); err != nil {
 		log.Printf("Warning: failed to update VM status: %v", err)
@@ -735,7 +789,7 @@ func (m *Manager) RestartVM(ctx context.Context, id string) error {
 	}
 
 	// Fetch VM for logging
-	vm, _ := m.db.GetVM(ctx, id)
+	vm, _ := m.store.GetVM(ctx, id)
 	vmName := id
 	if vm != nil {
 		vmName = vm.Name
@@ -755,7 +809,7 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 		return fmt.Errorf("permission denied: %w", err)
 	}
 
-	vm, err := m.db.GetVM(ctx, id)
+	vm, err := m.store.GetVM(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get VM: %w", err)
 	}
@@ -780,7 +834,7 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 	}
 
 	// Delete VM record
-	if err := m.db.DeleteVM(ctx, id); err != nil {
+	if err := m.store.DeleteVM(ctx, id); err != nil {
 		return fmt.Errorf("delete VM record: %w", err)
 	}
 
@@ -1096,7 +1150,7 @@ func (m *Manager) UpdateNodeStatus(ctx context.Context, nodeID string, status st
 
 // HAService returns the HA service instance.
 func (m *Manager) HAService() *haService {
-    return m.haSvc
+	return m.haSvc
 }
 
 // wireHAIntoAPI connects the HA subsystem to the API server.
@@ -1128,7 +1182,7 @@ func (m *Manager) Shutdown() {
 
 // GetSnapshots returns the snapshots for a VM (delegates to node agent).
 func (m *Manager) GetSnapshots(ctx context.Context, vmID string) ([]map[string]interface{}, error) {
-	vm, err := m.db.GetVM(ctx, vmID)
+	vm, err := m.store.GetVM(ctx, vmID)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -1150,7 +1204,7 @@ func (m *Manager) GetSnapshots(ctx context.Context, vmID string) ([]map[string]i
 
 // CreateSnapshot creates a snapshot for a VM (delegates to node agent).
 func (m *Manager) CreateSnapshot(ctx context.Context, vmID, name string) (string, error) {
-	vm, err := m.db.GetVM(ctx, vmID)
+	vm, err := m.store.GetVM(ctx, vmID)
 	if err != nil {
 		return "", fmt.Errorf("get VM: %w", err)
 	}
@@ -1172,7 +1226,7 @@ func (m *Manager) CreateSnapshot(ctx context.Context, vmID, name string) (string
 
 // DeleteSnapshot deletes a VM snapshot (delegates to node agent).
 func (m *Manager) DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error {
-	vm, err := m.db.GetVM(ctx, vmID)
+	vm, err := m.store.GetVM(ctx, vmID)
 	if err != nil {
 		return fmt.Errorf("get VM: %w", err)
 	}
@@ -1194,7 +1248,7 @@ func (m *Manager) DeleteSnapshot(ctx context.Context, vmID, snapshotID string) e
 
 // GetVMStats returns VM statistics (delegates to node agent).
 func (m *Manager) GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error) {
-	vm, err := m.db.GetVM(ctx, vmID)
+	vm, err := m.store.GetVM(ctx, vmID)
 	if err != nil {
 		return nil, fmt.Errorf("get VM: %w", err)
 	}
@@ -1234,7 +1288,7 @@ func (m *Manager) CreateNetwork(ctx context.Context, n *db.Network) (string, err
 	}
 
 	// Insert network record
-	id, err := m.db.CreateNetwork(ctx, n)
+	id, err := m.store.CreateNetwork(ctx, n)
 	if err != nil {
 		return "", fmt.Errorf("create network record: %w", err)
 	}
@@ -1250,12 +1304,12 @@ func (m *Manager) DeleteNetwork(ctx context.Context, id string) error {
 	}
 
 	// Fetch network record for logging
-	n, err := m.db.GetNetwork(ctx, id)
+	n, err := m.store.GetNetwork(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get network: %w", err)
 	}
 
-	if err := m.db.DeleteNetwork(ctx, id); err != nil {
+	if err := m.store.DeleteNetwork(ctx, id); err != nil {
 		return fmt.Errorf("delete network record: %w", err)
 	}
 
@@ -1276,7 +1330,7 @@ func (m *Manager) CreateStoragePool(ctx context.Context, id, name, poolType, pat
 	}
 
 	// Verify host exists and is active
-	host, err := m.db.GetHost(ctx, hostID)
+	host, err := m.store.GetHost(ctx, hostID)
 	if err != nil {
 		return fmt.Errorf("get host: %w", err)
 	}
@@ -1373,6 +1427,3 @@ func (m *Manager) ResizeDisk(ctx context.Context, diskID string, newSizeBytes in
 	log.Printf("Disk %s resized to %d bytes", diskID, newSizeBytes)
 	return nil
 }
-
-
-
