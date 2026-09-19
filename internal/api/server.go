@@ -127,13 +127,57 @@ var (
     GitCommit = "unknown"
 )
 
+// dbInterface covers the subset of *db.DB methods used by API handlers.
+// It exists so tests can substitute a mock in place of a real database
+// connection; *db.DB satisfies it implicitly.
+type dbInterface interface {
+    ListUsers(ctx context.Context, tenantID string) ([]db.User, error)
+    CreateUser(ctx context.Context, u *db.User) (string, error)
+    GetUser(ctx context.Context, id string) (*db.User, error)
+    UpdateUser(ctx context.Context, id string, updates map[string]interface{}) error
+    DeleteUser(ctx context.Context, id string) error
+
+    ListHosts(ctx context.Context, tenantID string) ([]db.Host, error)
+    CreateHost(ctx context.Context, h *db.Host) (string, error)
+    GetHost(ctx context.Context, id string) (*db.Host, error)
+    UpdateHost(ctx context.Context, id string, updates map[string]interface{}) error
+    DeleteHost(ctx context.Context, id string) error
+
+    ListVMs(ctx context.Context, tenantID string) ([]db.VM, error)
+    CreateVM(ctx context.Context, vm *db.VM) (string, error)
+    GetVM(ctx context.Context, id string) (*db.VM, error)
+    UpdateVM(ctx context.Context, id string, updates map[string]interface{}) error
+    DeleteVM(ctx context.Context, id string) error
+
+    ListStoragePools(ctx context.Context, tenantID string) ([]db.StoragePool, error)
+    CreateStoragePool(ctx context.Context, sp *db.StoragePool) (string, error)
+    GetStoragePool(ctx context.Context, id string) (*db.StoragePool, error)
+
+    ListNetworks(ctx context.Context, tenantID string) ([]db.Network, error)
+    CreateNetwork(ctx context.Context, n *db.Network) (string, error)
+    GetNetwork(ctx context.Context, id string) (*db.Network, error)
+    DeleteNetwork(ctx context.Context, id string) error
+
+    ListBackups(ctx context.Context, tenantID string) ([]db.Backup, error)
+    CreateBackup(ctx context.Context, b *db.Backup) (string, error)
+    GetBackup(ctx context.Context, id string) (*db.Backup, error)
+    UpdateBackup(ctx context.Context, id string, updates map[string]interface{}) error
+
+    ListEvents(ctx context.Context, tenantID string, limit int) ([]db.Event, error)
+
+    ListDatacenters(ctx context.Context, tenantID string) ([]db.Datacenter, error)
+    CreateDatacenter(ctx context.Context, dc *db.Datacenter) (string, error)
+    GetDatacenter(ctx context.Context, id string) (*db.Datacenter, error)
+    DeleteDatacenter(ctx context.Context, id string) error
+}
+
 // APIServer represents the HiveStack REST API server.
 type APIServer struct {
-    Config     *Config
-    db        *db.DB
-    rbac      *auth.RBACEngine
-    compliance *compliance.ComplianceStore
-    mux       *http.ServeMux
+	Config     *Config
+	db         dbInterface
+	rbac       *auth.RBACEngine
+	compliance compliance.ComplianceStore
+	mux        *http.ServeMux
 }
 
 // Config holds the API server configuration.
@@ -175,7 +219,7 @@ func New(cfg *Config, database *db.DB) (*APIServer, error) {
         Config:     cfg,
         db:         database,
         rbac:       auth.NewRBACEngine(),
-        compliance: compliance.NewComplianceStore(database),
+        compliance: *compliance.NewComplianceStore(database),
     }
     s.mux = new(http.ServeMux)
     s.registerRoutes()
@@ -564,7 +608,12 @@ func (s *APIServer) handleGetDC(w http.ResponseWriter, r *http.Request) {
         s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "id required"})
         return
     }
-    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "name": "datacenter-" + id})
+    dc, err := s.db.GetDatacenter(context.Background(), id)
+    if err != nil {
+        s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "datacenter not found"})
+        return
+    }
+    s.respondJSON(w, http.StatusOK, dc)
 }
 
 // handleDeleteDC deletes a datacenter.

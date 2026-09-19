@@ -84,7 +84,8 @@ func (e *RBACEngine) register() {
             {Resource: "backup", Action: "list"}, {Resource: "backup", Action: "create"},
             {Resource: "backup", Action: "restore"}, {Resource: "backup", Action: "cancel"},
             {Resource: "compliance", Action: "view"}, {Resource: "compliance", Action: "validate"},
-            {Resource: "compliance", Action: "evidence"}, {Resource: "event", Action: "list"},
+            {Resource: "compliance", Action: "evidence"}, {Resource: "compliance", Action: "drift"},
+            {Resource: "event", Action: "list"},
         },
     }
     e.roles["viewer"] = Role{

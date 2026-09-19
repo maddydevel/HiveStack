@@ -715,3 +715,67 @@ func (d *DB) DeleteBackup(ctx context.Context, id string) error {
 	_, err := d.ExecContext(ctx, "DELETE FROM backup WHERE id = $1", id)
 	return err
 }
+
+// CreateDatacenter inserts a new datacenter and returns its ID.
+func (d *DB) CreateDatacenter(ctx context.Context, dc *Datacenter) (string, error) {
+	tx, err := d.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	id, err := NewRecord(ctx, tx, "datacenter", map[string]interface{}{
+		"tenant_id":    dc.TenantID,
+		"name":         dc.Name,
+		"description":  dc.Description,
+		"status":       dc.Status,
+	})
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// GetDatacenter retrieves a datacenter by ID.
+func (d *DB) GetDatacenter(ctx context.Context, id string) (*Datacenter, error) {
+	row := d.QueryRowContext(ctx, `
+	    SELECT id, tenant_id, name, description, status, created_at, updated_at
+	    FROM datacenter WHERE id = $1
+	`, id)
+	var dc Datacenter
+	err := row.Scan(&dc.ID, &dc.TenantID, &dc.Name, &dc.Description, &dc.Status, &dc.CreatedAt, &dc.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &dc, nil
+}
+
+// ListDatacenters returns all datacenters for a tenant.
+func (d *DB) ListDatacenters(ctx context.Context, tenantID string) ([]Datacenter, error) {
+	rows, err := d.QueryContext(ctx, `
+	    SELECT id, tenant_id, name, description, status, created_at, updated_at
+	    FROM datacenter WHERE tenant_id = $1 ORDER BY name
+	`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var dcs []Datacenter
+	for rows.Next() {
+		var dc Datacenter
+		if err := rows.Scan(&dc.ID, &dc.TenantID, &dc.Name, &dc.Description, &dc.Status, &dc.CreatedAt, &dc.UpdatedAt); err != nil {
+			return nil, err
+		}
+		dcs = append(dcs, dc)
+	}
+	return dcs, rows.Err()
+}
+
+// DeleteDatacenter removes a datacenter by ID.
+func (d *DB) DeleteDatacenter(ctx context.Context, id string) error {
+	_, err := d.ExecContext(ctx, "DELETE FROM datacenter WHERE id = $1", id)
+	return err
+}
