@@ -1,0 +1,193 @@
+// HiveStack Node Agent gRPC Service Definition
+//
+// This proto file defines the gRPC service used for communication between
+// the HiveStack Manager and Node Agents. It matches the Go structs in
+// proto/node.go.
+//
+// Generate Go code with:
+//   protoc --go_out=. --go-grpc_out=. proto/node.proto
+
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/maddydevel/HiveStack/proto";
+
+// NodeAgent is the gRPC service exposed by HiveStack Node Agents.
+// The Manager connects to each node to send commands and receive status.
+service NodeAgent {
+  // Register registers a node agent with the manager.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Heartbeat sends periodic status updates from the node.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // ExecuteCommand executes a command on the node (e.g., VM lifecycle).
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+  // GetStatus returns the current node status.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // ListVMs returns the list of VMs running on the node.
+  rpc ListVMs(ListVMsRequest) returns (ListVMsResponse);
+}
+
+// ─── Registration ─────────────────────────────────────────────────────────────
+
+// RegisterRequest is sent by a node agent to register with the manager.
+message RegisterRequest {
+  string node_id = 1;
+  string hostname = 2;
+  string node_version = 3;
+  string node_agent = 4;
+  repeated string capabilities = 5;
+}
+
+// RegisterResponse is the manager's response to a registration request.
+message RegisterResponse {
+  string node_id = 1;
+  string manager_id = 2;
+  string status = 3;
+}
+
+// ─── Heartbeat ────────────────────────────────────────────────────────────────
+
+// HeartbeatRequest is the periodic heartbeat from a node.
+message HeartbeatRequest {
+  string node_id = 1;
+  NodeStatus status = 2;
+  int64 since = 3;
+}
+
+// HeartbeatResponse acknowledges a heartbeat.
+message HeartbeatResponse {
+  string node_id = 1;
+  bool accepted = 2;
+  string message = 3;
+}
+
+// ─── Node Status ──────────────────────────────────────────────────────────────
+
+// NodeStatus holds the current status of a node.
+message NodeStatus {
+  string node_id = 1;
+  string hostname = 2;
+  NodeStatusType status = 3;
+  int32 cpu_count = 4;
+  uint64 memory_total = 5;
+  uint64 memory_free = 6;
+  uint64 disk_total = 7;
+  uint64 disk_free = 8;
+  repeated VMInfo vms = 9;
+  int64 timestamp = 10;
+}
+
+// NodeStatusType represents the operational status of a node.
+enum NodeStatusType {
+  NODE_STATUS_UNKNOWN = 0;
+  NODE_STATUS_ONLINE = 1;
+  NODE_STATUS_OFFLINE = 2;
+  NODE_STATUS_MAINTENANCE = 3;
+  NODE_STATUS_DRAINING = 4;
+}
+
+// ─── VM Information ───────────────────────────────────────────────────────────
+
+// VMInfo holds information about a virtual machine.
+message VMInfo {
+  string vm_id = 1;
+  string name = 2;
+  int32 cpu_count = 3;
+  uint64 memory = 4;
+  VMState state = 5;
+  VMStatusType status = 6;
+}
+
+// VMState represents the power state of a VM.
+enum VMState {
+  VM_STATE_UNKNOWN = 0;
+  VM_STATE_RUNNING = 1;
+  VM_STATE_PAUSED = 2;
+  VM_STATE_STATIC = 3;
+  VM_STATE_SHUT_OFF = 4;
+  VM_STATE_OTHER = 5;
+}
+
+// VMStatusType represents the lifecycle status of a VM.
+enum VMStatusType {
+  VM_STATUS_UNKNOWN = 0;
+  VM_STATUS_CREATING = 1;
+  VM_STATUS_RUNNING = 2;
+  VM_STATUS_PAUSED = 3;
+  VM_STATUS_STOP_PENDING = 4;
+  VM_STATUS_STOPPED = 5;
+  VM_STATUS_MIGRATING = 6;
+  VM_STATUS_SNAPSHOTTING = 7;
+}
+
+// ─── Command Execution ─────────────────────────────────────────────────────────
+
+// ExecuteCommandRequest is a command from the manager to the node.
+message ExecuteCommandRequest {
+  string node_id = 1;
+  string command_id = 2;
+  CommandType command_type = 3;
+  string vm_id = 4;
+  map<string, string> params = 5;
+  int64 created_at = 6;
+}
+
+// ExecuteCommandResponse is the result of a command execution.
+message ExecuteCommandResponse {
+  string command_id = 1;
+  CommandStatus status = 2;
+  string result = 3;
+  string error = 4;
+  int64 completed_at = 5;
+}
+
+// CommandType represents the type of command to execute.
+enum CommandType {
+  COMMAND_TYPE_UNKNOWN = 0;
+  COMMAND_TYPE_VM_CREATE = 1;
+  COMMAND_TYPE_VM_START = 2;
+  COMMAND_TYPE_VM_STOP = 3;
+  COMMAND_TYPE_VM_RESTART = 4;
+  COMMAND_TYPE_VM_MIGRATE = 5;
+  COMMAND_TYPE_VM_SNAPSHOT = 6;
+  COMMAND_TYPE_VM_DESTROY = 7;
+  COMMAND_TYPE_VM_RESIZE = 8;
+  COMMAND_TYPE_VM_GET_STATS = 9;
+  COMMAND_TYPE_STORAGE_CREATE = 100;
+  COMMAND_TYPE_STORAGE_DELETE = 101;
+  COMMAND_TYPE_NETWORK_CREATE = 200;
+  COMMAND_TYPE_NETWORK_DELETE = 201;
+}
+
+// CommandStatus represents the execution status of a command.
+enum CommandStatus {
+  COMMAND_STATUS_PENDING = 0;
+  COMMAND_STATUS_RUNNING = 1;
+  COMMAND_STATUS_SUCCESS = 2;
+  COMMAND_STATUS_FAILED = 3;
+  COMMAND_STATUS_CANCELLED = 4;
+  COMMAND_STATUS_TIMEOUT = 5;
+}
+
+// ─── Status & VM Listing ──────────────────────────────────────────────────────
+
+// GetStatusRequest requests the current node status.
+message GetStatusRequest {
+  string node_id = 1;
+}
+
+// GetStatusResponse returns the current node status.
+message GetStatusResponse {
+  NodeStatus status = 1;
+}
+
+// ListVMsRequest requests the list of VMs on a node.
+message ListVMsRequest {
+  string node_id = 1;
+}
+
+// ListVMsResponse returns the list of VMs.
+message ListVMsResponse {
+  repeated VMInfo vms = 1;
+}

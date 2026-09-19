@@ -1,0 +1,99 @@
+# HiveStack Manager Configuration
+# Copy to /etc/hivestack/manager.yaml and customize
+
+server:
+  # REST API listen address
+  host: "0.0.0.0"
+  port: 8080
+
+  # TLS configuration
+  tls_enabled: true
+  tls_cert_file: "/etc/hivestack/certs/manager.crt"
+  tls_key_file: "/etc/hivestack/certs/manager.key"
+  # tls_ca_file: "/etc/hivestack/certs/ca.crt"  # For client cert verification
+
+  # Development only: generate self-signed cert
+  tls_dev_mode: false
+
+# gRPC server configuration (for node communication)
+grpc:
+  host: "0.0.0.0"
+  port: 8443
+  tls_enabled: true
+  tls_cert_file: "/etc/hivestack/certs/manager.crt"
+  tls_key_file: "/etc/hivestack/certs/manager.key"
+  tls_ca_file: "/etc/hivestack/certs/ca.crt"
+
+# Database configuration
+database:
+  # PostgreSQL connection string
+  dsn: "postgres://hivestack:CHANGE_ME@localhost:5432/hivestack?sslmode=disable"
+  # For TLS: sslmode=verify-full&sslrootcert=/etc/hivestack/certs/ca.crt
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+# Authentication configuration
+auth:
+  # JWT signing secret - MUST be changed in production (32+ random chars)
+  jwt_secret: "change-this-in-production-use-strong-random-secret-min-32-chars"
+  # Token expiry duration
+  token_expiry: "24h"
+  # Refresh token expiry
+  refresh_expiry: "168h"  # 7 days
+
+# Logging configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, text
+  output: "/var/log/hivestack/manager.log"
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 9100
+  path: "/metrics"
+
+# VM defaults
+vm_defaults:
+  # Default storage pool for new VMs
+  storage_pool: "hivestack"
+  # Default network for new VMs
+  network: "hivestack"
+  # Default vCPU count
+  vcpu: 2
+  # Default memory in MB
+  memory_mb: 4096
+  # Default disk size in GB
+  disk_gb: 50
+
+# High availability settings
+ha:
+  enabled: false
+  # Cluster mode: standalone, active_passive, active_active
+  mode: "standalone"
+  # Peer manager addresses (for HA mode)
+  peers: []
+  # Heartbeat interval
+  heartbeat_interval: "10s"
+  # Failover timeout
+  failover_timeout: "30s"
+
+# vCenter/ESXi integration (optional)
+vcenter:
+  enabled: false
+  host: ""
+  port: 443
+  username: ""
+  password: ""
+  insecure: false
+
+# Backup configuration
+backup:
+  enabled: false
+  # Backup storage path
+  path: "/var/lib/hivestack/backups"
+  # Retention count
+  retention: 7
+  # Schedule (cron expression)
+  schedule: "0 2 * * *"

@@ -1,0 +1,88 @@
+# HiveStack Node Agent Configuration
+# Copy to /etc/hivestack/node.yaml and customize
+
+# Manager gRPC address
+manager_address: "hivestack-manager:8443"
+
+# Node gRPC listen address
+grpc_address: "0.0.0.0:9090"
+
+# Node ID (auto-generated from hostname if empty)
+node_id: ""
+
+# Heartbeat interval to manager
+heartbeat_interval: "30s"
+
+# Libvirt connection URI
+libvirt_uri: "qemu:///system"
+
+# TLS configuration
+tls:
+  cert_file: "/etc/hivestack/certs/node-server.crt"
+  key_file: "/etc/hivestack/certs/node-server.key"
+  ca_file: "/etc/hivestack/certs/ca.crt"
+
+# Logging configuration
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, text
+  output: "/var/log/hivestack/node.log"
+
+# Storage configuration
+storage:
+  # Default storage pool name
+  pool_name: "hivestack"
+  # Storage pool path
+  pool_path: "/var/lib/libvirt/images/hivestack"
+  # Supported filesystem types: ext4, xfs, btrfs
+  fs_type: "xfs"
+  # Enable thin provisioning
+  thin_provision: true
+
+# Network configuration
+network:
+  # Default bridge name
+  bridge_name: "virbr-hivestack"
+  # Default subnet (CIDR)
+  subnet: "192.168.100.0/24"
+  # Gateway IP
+  gateway: "192.168.100.1"
+  # DHCP range
+  dhcp_range_start: "192.168.100.10"
+  dhcp_range_end: "192.168.100.254"
+  # Enable NAT
+  nat_enabled: true
+
+# Resource limits
+resources:
+  # Maximum VMs this node can host
+  max_vms: 50
+  # Maximum vCPUs available
+  max_vcpus: 64
+  # Maximum memory in MB
+  max_memory_mb: 262144  # 256GB
+  # Maximum disk space in GB
+  max_disk_gb: 2048  # 2TB
+  # Reserve hugepages for VMs
+  hugepages_enabled: true
+  hugepages_count: 1024  # 1024 x 2MB = 2GB
+
+# Monitoring
+monitoring:
+  # Enable Prometheus metrics
+  enabled: true
+  # Metrics port
+  port: 9100
+  # Metrics path
+  path: "/metrics"
+
+# VM console access
+console:
+  # Enable VNC
+  vnc_enabled: true
+  # VNC port range start
+  vnc_port_start: 5900
+  # Enable SPICE
+  spice_enabled: true
+  # SPICE port range start
+  spice_port_start: 6000

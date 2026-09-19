@@ -2,9 +2,251 @@
 
 ## Overview
 
-This directory contains the KIWI appliance description for building a SUSE SLES 15 SP7 based ISO image with HiveStack pre-installed.
+This directory contains the KIWI appliance description for building a SUSE SLES 15 SP7 based ISO image with HiveStack pre-installed, plus container build files for Docker/Podman deployment.
 
-## Prerequisites
+## Project Structure
+
+```
+appliance/
+├── Dockerfile                    # Multi-stage container build
+├── docker-compose.yaml           # Full stack orchestration
+├── build-appliance.sh            # KIWI ISO build script
+├── config.xml                    # KIWI image description
+├── config.sh                     # KIWI chroot customization
+├── images.sh                     # KIWI image cleanup
+├── config/
+│   ├── manager.yaml.example      # Manager config template
+│   └── node.yaml.example         # Node config template
+├── systemd/
+│   ├── hivestack-manager.service # Manager systemd unit
+│   └── hivestack-node.service    # Node systemd unit
+├── scripts/
+│   ├── first-boot.sh             # First-boot initialization
+│   ├── build-container.sh        # Container image build
+│   ├── entrypoint.sh             # Container entrypoint
+│   └── hivestack-first-boot.service
+├── overlay/                      # Files overlaid into ISO
+│   ├── etc/systemd/system/
+│   └── tmp/HiveStack/
+├── images/                       # KIWI image config
+└── profiles/                     # KIWI build profiles
+```
+
+## Quick Start
+
+### Option 1: Container Deployment (Recommended)
+
+```bash
+# Build and run with Docker Compose
+cd /tmp/HiveStack/appliance
+docker compose up -d
+
+# Or build manually
+./scripts/build-container.sh all latest
+
+# Run manager
+docker run -d --name hivestack-manager \
+  -p 8080:8080 -p 8443:8443 \
+  -v hivestack-data:/var/lib/hivestack \
+  hivestack:latest manager
+
+# Run node agent
+docker run -d --name hivestack-node \
+  --privileged \
+  -p 9090:9090 \
+  -v /dev/kvm:/dev/kvm \
+  hivestack:latest node
+```
+
+### Option 2: Bare Metal / VM Appliance
+
+```bash
+# Build the ISO
+cd /tmp/HiveStack/appliance
+sudo ./build-appliance.sh
+
+# Write to USB (replace sdX with your device)
+sudo cp /tmp/hivestack-build/*.iso /dev/sdX
+
+# Boot from USB and install
+```
+
+## Building the Container Image
+
+### Prerequisites
+- Docker or Podman installed
+- Go 1.26+ (for building binaries)
+- At least 4GB free disk space
+
+### Build Commands
+
+```bash
+cd /tmp/HiveStack/appliance
+
+# Build all components (default)
+./scripts/build-container.sh all latest
+
+# Build specific component
+./scripts/build-container.sh manager v1.0.0
+./scripts/build-container.sh node v1.0.0
+
+# Build Go binaries only
+./scripts/build-container.sh binaries
+
+# Build with custom registry
+REGISTRY=ghcr.io/maddydevel ./scripts/build-container.sh all v1.0.0
+```
+
+### Container Image Details
+
+The Dockerfile uses multi-stage builds:
+1. **Builder stage**: Compiles Go binaries with `CGO_ENABLED=0` for static linking
+2. **Runtime stage**: Based on Rocky Linux 9 minimal with required runtime dependencies
+
+**Ports exposed:**
+- `8080` - HiveStack Manager REST API
+- `8443` - HiveStack Manager gRPC
+- `9090` - HiveStack Node Agent gRPC
+
+**Volumes:**
+- `/var/lib/hivestack` - Persistent data
+- `/etc/hivestack` - Configuration and certificates
+- `/var/log/hivestack` - Log files
+
+## Docker Compose Deployment
+
+The `docker-compose.yaml` provides a complete stack:
+
+```yaml
+services:
+  postgres:     # PostgreSQL 15 database
+  manager:      # HiveStack Manager (REST API + gRPC)
+  node:         # HiveStack Node Agent (libvirt/KVM)
+  node-exporter: # Prometheus metrics
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_PASSWORD` | `hivestack-secure-password-change-me` | Database password |
+| `JWT_SECRET` | `change-this-in-production-use-strong-random-secret` | JWT signing secret |
+| `NODE_ID` | (auto) | Node identifier |
+| `MANAGER_ADDRESS` | `manager:8443` | Manager gRPC address |
+
+### Scaling Nodes
+
+```bash
+docker compose up -d --scale node=3
+```
+
+## Systemd Services
+
+For bare-metal or VM deployments, install the systemd service files:
+
+```bash
+# Copy service files
+sudo cp systemd/hivestack-manager.service /etc/systemd/system/
+sudo cp systemd/hivestack-node.service /etc/systemd/system/
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable and start services
+sudo systemctl enable --now hivestack-manager
+sudo systemctl enable --now hivestack-node
+```
+
+### Service Details
+
+**hivestack-manager.service:**
+- Runs as `hivestack:hivestack`
+- Depends on `network.target` and `postgresql.service`
+- Security hardening: `ProtectSystem=strict`, `NoNewPrivileges=yes`, etc.
+- Resource limits: `LimitNOFILE=65536`, `LimitMEMLOCK=infinity`
+
+**hivestack-node.service:**
+- Runs as `hivestack-node:hivestack-node`
+- Depends on `network.target` and `libvirtd.service`
+- Requires `CAP_SYS_ADMIN` and `CAP_SYS_RESOURCE` for KVM management
+- `PrivateDevices=false` (needs `/dev/kvm` access)
+
+## Configuration
+
+### Manager Configuration (`/etc/hivestack/manager.yaml`)
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+  tls_enabled: true
+  tls_cert_file: "/etc/hivestack/certs/manager.crt"
+  tls_key_file: "/etc/hivestack/certs/manager.key"
+
+grpc:
+  host: "0.0.0.0"
+  port: 8443
+  tls_enabled: true
+  tls_cert_file: "/etc/hivestack/certs/manager.crt"
+  tls_key_file: "/etc/hivestack/certs/manager.key"
+  tls_ca_file: "/etc/hivestack/certs/ca.crt"
+
+database:
+  dsn: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable"
+
+auth:
+  jwt_secret: "change-this-in-production-use-strong-random-secret-min-32-chars"
+  token_expiry: "24h"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "/var/log/hivestack/manager.log"
+```
+
+### Node Configuration (`/etc/hivestack/node.yaml`)
+
+```yaml
+manager_address: "hivestack-manager:8443"
+grpc_address: "0.0.0.0:9090"
+node_id: ""
+heartbeat_interval: "30s"
+libvirt_uri: "qemu:///system"
+
+tls:
+  cert_file: "/etc/hivestack/certs/node-server.crt"
+  key_file: "/etc/hivestack/certs/node-server.key"
+  ca_file: "/etc/hivestack/certs/ca.crt"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "/var/log/hivestack/node.log"
+```
+
+## First Boot Process
+
+On first boot, the appliance automatically:
+
+1. **Initializes PostgreSQL** - Creates `hivestack` database and user
+2. **Generates TLS certificates** - CA, Manager server, Node client/server certs for mTLS (using ECDSA P-256)
+3. **Creates default configuration** - `/etc/hivestack/manager.yaml` and `node.yaml`
+4. **Installs systemd services** - `hivestack-manager.service`, `hivestack-node.service`
+5. **Configures libvirt** - Creates default storage pool and network
+6. **Reserves hugepages** - 2GB (1024 x 2MB) for HANA VMs
+7. **Starts all services** - PostgreSQL, libvirtd, Manager, Node Agent, Cockpit, Prometheus
+8. **Verifies health** - Checks API endpoint responds
+
+### Environment Variables for First Boot
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HIVESTACK_DB_PASSWORD` | `hivestack-secure-password-change-me` | Database password |
+| `HIVESTACK_JWT_SECRET` | `change-this-in-production...` | JWT signing secret |
+| `HIVESTACK_MANAGER_HOST` | `hivestack-manager` | Manager hostname for certs |
+| `HIVESTACK_HUGEPAGES` | `1024` | Number of 2MB hugepages |
+
+## Building the ISO Appliance
 
 ### Build Host Requirements
 - SUSE SLES 15 SP7 (or openSUSE Leap 15.5+)
@@ -18,30 +260,10 @@ This directory contains the KIWI appliance description for building a SUSE SLES 
 SUSEConnect -r <registration-code> -e <email>
 ```
 
-## Building the Appliance
-
-### Quick Build
+### Build Commands
 ```bash
 cd /tmp/HiveStack/appliance
 sudo ./build-appliance.sh
-```
-
-### Manual Build Steps
-```bash
-# 1. Install kiwi-ng
-sudo zypper install kiwi-ng python3-kiwi
-
-# 2. Build the appliance
-cd /tmp/HiveStack/appliance
-sudo kiwi-ng --type iso \
-    --description . \
-    --target-dir /tmp/hivestack-build \
-    --profile Standard \
-    --allow-existing-root \
-    build
-
-# 3. Find the ISO
-ls -la /tmp/hivestack-build/*.iso
 ```
 
 ### Build Output
@@ -82,19 +304,6 @@ ls -la /tmp/hivestack-build/*.iso
 - CLI tools
 - First-boot initialization script
 
-## First Boot Process
-
-On first boot, the appliance automatically:
-
-1. **Initializes PostgreSQL** - Creates `hivestack` database and user
-2. **Generates TLS certificates** - CA, Manager server, Node client/server certs for mTLS
-3. **Creates default configuration** - `/etc/hivestack/manager.yaml` and `node.yaml`
-4. **Installs systemd services** - `hivestack-manager.service`, `hivestack-node.service`
-5. **Configures libvirt** - Creates default storage pool and network
-6. **Reserves hugepages** - 2GB (1024 x 2MB) for HANA VMs
-7. **Starts all services** - PostgreSQL, libvirtd, Manager, Node Agent, Cockpit, Prometheus
-8. **Verifies health** - Checks API endpoint responds
-
 ## Post-Installation Configuration
 
 ### Required Changes (Security)
@@ -107,7 +316,7 @@ sudo -u postgres psql -c "ALTER USER hivestack WITH PASSWORD 'your-secure-passwo
 # jwt_secret: "your-strong-random-secret-min-32-chars"
 
 # 3. Update manager.yaml with new DB password
-# dsn: "postgres://hivestack:your-secure-password@localhost:5432/hivestack?sslmode=disable"
+# dsn: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable"
 
 # 4. Restart services
 systemctl restart hivestack-manager hivestack-node
@@ -135,8 +344,6 @@ nmcli con up "Wired connection 1"
 | Prometheus Metrics | http://<ip>:9100/metrics | - |
 
 ## Deploying HiveStack Binaries
-
-The appliance includes placeholder scripts. To deploy actual binaries:
 
 ### Option 1: Build on Appliance
 ```bash
@@ -169,7 +376,7 @@ rpm -ivh hivestack-*.rpm
 3. On Manager, register node via API:
    ```bash
    curl -k -X POST https://<manager>:8080/api/v1/hosts \
-     -H "Authorization: Bearer <token>" \
+     -H "Authorization: Bearer ***" \
      -H "Content-Type: application/json" \
      -d '{"name":"node-01","address":"<node-ip>","grpc_port":9090}'
    ```
@@ -192,6 +399,13 @@ zypper patch
 # 2. Replace /opt/hivestack/bin/*
 # 3. Run migrations: hive-manager migrate up
 # 4. Restart services
+```
+
+### Container Updates
+```bash
+cd /tmp/HiveStack/appliance
+./scripts/build-container.sh all v1.1.0
+docker compose up -d --build
 ```
 
 ## Troubleshooting
@@ -222,6 +436,19 @@ journalctl -u hivestack-node -f
 
 # Verify config
 /opt/hivestack/bin/hive-manager --config /etc/hivestack/manager.yaml --validate
+```
+
+### Container Issues
+```bash
+# Check container logs
+docker logs hivestack-manager
+docker logs hivestack-node
+
+# Inspect container
+docker inspect hivestack-manager
+
+# Check health
+docker ps --filter "name=hivestack"
 ```
 
 ### libvirt Issues

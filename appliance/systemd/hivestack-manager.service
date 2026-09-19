@@ -1,0 +1,58 @@
+[Unit]
+Description=HiveStack Manager - KVM Virtualization Management Platform
+Documentation=https://github.com/maddydevel/HiveStack
+Documentation=https://hermes-agent.nousresearch.com/docs
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hivestack
+Group=hivestack
+Environment="HIVESTACK_CONFIG=/etc/hivestack/manager.yaml"
+Environment="HIVESTACK_LOG_LEVEL=info"
+EnvironmentFile=-/etc/default/hivestack-manager
+ExecStartPre=/opt/hivestack/bin/hive-manager --config /etc/hivestack/manager.yaml --validate
+ExecStart=/opt/hivestack/bin/hive-manager --config /etc/hivestack/manager.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hivestack-manager
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=yes
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# Capabilities
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SETGID CAP_SETUID CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_SETGID CAP_SETUID CAP_NET_BIND_SERVICE
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=32768
+LimitMEMLOCK=infinity
+TasksMax=infinity
+
+# Read-write paths
+ReadWritePaths=/var/lib/hivestack /var/log/hivestack /run/hivestack
+
+[Install]
+WantedBy=multi-user.target
