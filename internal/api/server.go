@@ -181,6 +181,8 @@ type APIServer struct {
 	rbac       *auth.RBACEngine
 	compliance compliance.ComplianceStore
 	vmHandler  VMHandler
+	storageHandler StorageHandler
+	networkHandler NetworkHandler
 	mux        *http.ServeMux
 	// Transport: httpServer is built by New; tlsConfig is nil unless TLS is enabled.
 	httpServer *http.Server
@@ -198,6 +200,19 @@ type VMHandler interface {
 	CreateSnapshot(ctx context.Context, vmID, name string) (string, error)
 	DeleteSnapshot(ctx context.Context, vmID, snapshotID string) error
 	GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error)
+}
+
+// StorageHandler defines storage operations the API server delegates to.
+type StorageHandler interface {
+	CreateStoragePool(ctx context.Context, id, name, poolType, path, hostID string) error
+	DeleteStoragePool(ctx context.Context, id, hostID string) error
+	ResizeDisk(ctx context.Context, diskID string, newSizeBytes int64) error
+}
+
+// NetworkHandler defines network operations the API server delegates to.
+type NetworkHandler interface {
+	CreateNetwork(ctx context.Context, n *db.Network) (string, error)
+	DeleteNetwork(ctx context.Context, id string) error
 }
 
 // Interfaces for HA integration (avoid circular imports).
@@ -389,6 +404,16 @@ func (s *APIServer) SetPolicyManager(pm policyManagerIface) {
 // SetVMHandler sets the VM lifecycle handler for API handlers.
 func (s *APIServer) SetVMHandler(h VMHandler) {
 	s.vmHandler = h
+}
+
+// SetStorageHandler sets the storage handler for API handlers.
+func (s *APIServer) SetStorageHandler(h StorageHandler) {
+	s.storageHandler = h
+}
+
+// SetNetworkHandler sets the network handler for API handlers.
+func (s *APIServer) SetNetworkHandler(h NetworkHandler) {
+	s.networkHandler = h
 }
 
 // UpdateHostMetrics records Prometheus metrics for a host.
@@ -1223,26 +1248,46 @@ func (s *APIServer) handleCreateStoragePool(w http.ResponseWriter, r *http.Reque
     }
     claims, _ := auth.ClaimsFromContext(r.Context())
     var req struct {
-        Name string `json:"name"`
-        Type string `json:"type"`
-        Path string `json:"path"`
+        Name    string `json:"name"`
+        Type    string `json:"type"`
+        Path    string `json:"path"`
+        HostID  string `json:"host_id"`
     }
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
         return
     }
+    if req.Name == "" {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+        return
+    }
+    if req.HostID == "" {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "host_id required"})
+        return
+    }
+
+    // Create DB record first
     sp := &db.StoragePool{
         TenantID:   claims.TenantID,
         Name:       req.Name,
         Type:       req.Type,
         Path:       req.Path,
-        Status:     "active",
+        Status:     "creating",
     }
     id, err := s.db.CreateStoragePool(context.Background(), sp)
     if err != nil {
         s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }
+
+    // Delegate to the node agent via the storage handler
+    if s.storageHandler != nil {
+        if err := s.storageHandler.CreateStoragePool(r.Context(), id, req.Name, req.Type, req.Path, req.HostID); err != nil {
+            s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+            return
+        }
+    }
+
     s.respondJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
@@ -1268,6 +1313,20 @@ func (s *APIServer) handleDeleteStoragePool(w http.ResponseWriter, r *http.Reque
         return
     }
     id := r.PathValue("id")
+    var req struct {
+        HostID string `json:"host_id"`
+    }
+    _ = json.NewDecoder(r.Body).Decode(&req)
+    if req.HostID == "" {
+        s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "host_id required"})
+        return
+    }
+    if s.storageHandler != nil {
+        if err := s.storageHandler.DeleteStoragePool(r.Context(), id, req.HostID); err != nil {
+            s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+            return
+        }
+    }
     s.respondJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }
 
@@ -1292,12 +1351,31 @@ func (s *APIServer) handleGetDisk(w http.ResponseWriter, r *http.Request) {
 
 // handleResizeDisk resizes a disk.
 func (s *APIServer) handleResizeDisk(w http.ResponseWriter, r *http.Request) {
-    if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
-        s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-        return
-    }
-    id := r.PathValue("id")
-    s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "resized"})
+	if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
+		s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	id := r.PathValue("id")
+	var req struct {
+		NewSizeBytes int64 `json:"new_size_bytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.NewSizeBytes <= 0 {
+		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "new_size_bytes must be positive"})
+		return
+	}
+	if s.storageHandler == nil {
+		s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "storage handler not available"})
+		return
+	}
+	if err := s.storageHandler.ResizeDisk(r.Context(), id, req.NewSizeBytes); err != nil {
+		s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	s.respondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "resized"})
 }
 
 // handleListNetworks returns all networks.
@@ -1319,6 +1397,10 @@ func (s *APIServer) handleListNetworks(w http.ResponseWriter, r *http.Request) {
 func (s *APIServer) handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
     if _, ok := auth.ClaimsFromContext(r.Context()); !ok {
         s.respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+        return
+    }
+    if s.networkHandler == nil {
+        s.respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "network handler not available"})
         return
     }
     claims, _ := auth.ClaimsFromContext(r.Context())
@@ -1348,7 +1430,7 @@ func (s *APIServer) handleCreateNetwork(w http.ResponseWriter, r *http.Request) 
         DNS:          req.DNS,
         Status:       "active",
     }
-    id, err := s.db.CreateNetwork(context.Background(), n)
+    id, err := s.networkHandler.CreateNetwork(context.Background(), n)
     if err != nil {
         s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
@@ -1378,7 +1460,7 @@ func (s *APIServer) handleDeleteNetwork(w http.ResponseWriter, r *http.Request) 
         return
     }
     id := r.PathValue("id")
-    if err := s.db.DeleteNetwork(context.Background(), id); err != nil {
+    if err := s.networkHandler.DeleteNetwork(context.Background(), id); err != nil {
         s.respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
         return
     }

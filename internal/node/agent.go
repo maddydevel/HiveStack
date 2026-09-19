@@ -205,6 +205,26 @@ func (a *Agent) startCommandHandler(ctx context.Context) {
     }
 }
 
+// CreateStoragePool creates a storage pool on the node.
+func (a *Agent) CreateStoragePool(ctx context.Context, id, name, poolType, path string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.running {
+		return fmt.Errorf("agent not running")
+	}
+	return a.libvirt.CreateStoragePool(ctx, id, name, poolType, path)
+}
+
+// DeleteStoragePool deletes a storage pool on the node.
+func (a *Agent) DeleteStoragePool(ctx context.Context, id string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.running {
+		return fmt.Errorf("agent not running")
+	}
+	return a.libvirt.DeleteStoragePool(ctx, id)
+}
+
 // HostInfo returns the current host information from libvirt.
 func (a *Agent) HostInfo(ctx context.Context) (*libvirt.HostInfo, error) {
     a.mu.Lock()

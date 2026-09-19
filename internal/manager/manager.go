@@ -60,6 +60,9 @@ type vmStore interface {
 	ListVMs(ctx context.Context, tenantID string) ([]db.VM, error)
 	UpdateVM(ctx context.Context, id string, updates map[string]interface{}) error
 	CreateEvent(ctx context.Context, e *db.Event) (string, error)
+	GetDisk(ctx context.Context, id string) (*db.Disk, error)
+	UpdateDisk(ctx context.Context, id string, updates map[string]interface{}) error
+	GetStoragePool(ctx context.Context, id string) (*db.StoragePool, error)
 }
 
 var _ vmStore = (*db.DB)(nil)
@@ -139,6 +142,8 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
     // Wire HA dependencies into the API server
     m.wireHAIntoAPI()
     m.apiServer.SetVMHandler(m)
+    m.apiServer.SetStorageHandler(m)
+    m.apiServer.SetNetworkHandler(m)
 
     m.wg.Add(1)
     go func() {
@@ -1161,3 +1166,161 @@ func (m *Manager) GetVMStats(ctx context.Context, vmID string) (map[string]inter
 	}
 	return stats.GetVMStats(ctx, vmID)
 }
+
+// ---------- Network Lifecycle Methods ----------
+
+// CreateNetwork creates a network record and notifies the node agent via gRPC.
+func (m *Manager) CreateNetwork(ctx context.Context, n *db.Network) (string, error) {
+	if n == nil {
+		return "", fmt.Errorf("network is required")
+	}
+	if n.Name == "" {
+		return "", fmt.Errorf("network name is required")
+	}
+	if n.TenantID == "" {
+		return "", fmt.Errorf("tenant_id is required")
+	}
+
+	// Insert network record
+	id, err := m.db.CreateNetwork(ctx, n)
+	if err != nil {
+		return "", fmt.Errorf("create network record: %w", err)
+	}
+
+	log.Printf("Network created: %s (id=%s, tenant=%s)", n.Name, id, n.TenantID)
+	return id, nil
+}
+
+// DeleteNetwork removes a network record by ID.
+func (m *Manager) DeleteNetwork(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("network id is required")
+	}
+
+	// Fetch network record for logging
+	n, err := m.db.GetNetwork(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get network: %w", err)
+	}
+
+	if err := m.db.DeleteNetwork(ctx, id); err != nil {
+		return fmt.Errorf("delete network record: %w", err)
+	}
+
+	log.Printf("Network deleted: %s (id=%s)", n.Name, id)
+	return nil
+}
+
+// CreateStoragePool creates a storage pool on a node via the node agent.
+func (m *Manager) CreateStoragePool(ctx context.Context, id, name, poolType, path, hostID string) error {
+	if id == "" {
+		return fmt.Errorf("storage pool id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("storage pool name is required")
+	}
+	if hostID == "" {
+		return fmt.Errorf("host_id is required to create a storage pool")
+	}
+
+	// Verify host exists and is active
+	host, err := m.db.GetHost(ctx, hostID)
+	if err != nil {
+		return fmt.Errorf("get host: %w", err)
+	}
+	if host.Status != "active" {
+		return fmt.Errorf("host %s is not active (status: %s)", host.Name, host.Status)
+	}
+
+	// Delegate to the node agent
+	ctrl := m.vmController(hostID)
+	if ctrl == nil {
+		return fmt.Errorf("host %s has no registered node agent", hostID)
+	}
+	storageCtrl, ok := ctrl.(node.StorageController)
+	if !ok {
+		return fmt.Errorf("node agent for host %s does not support storage pools", hostID)
+	}
+	return storageCtrl.CreateStoragePool(ctx, id, name, poolType, path)
+}
+
+// DeleteStoragePool deletes a storage pool on a node via the node agent.
+func (m *Manager) DeleteStoragePool(ctx context.Context, id, hostID string) error {
+	if id == "" {
+		return fmt.Errorf("storage pool id is required")
+	}
+	if hostID == "" {
+		return fmt.Errorf("host_id is required to delete a storage pool")
+	}
+
+	// Delegate to the node agent
+	ctrl := m.vmController(hostID)
+	if ctrl == nil {
+		return fmt.Errorf("host %s has no registered node agent", hostID)
+	}
+	storageCtrl, ok := ctrl.(node.StorageController)
+	if !ok {
+		return fmt.Errorf("node agent for host %s does not support storage pools", hostID)
+	}
+	return storageCtrl.DeleteStoragePool(ctx, id)
+}
+
+// ResizeDisk resizes a disk by ID. It locates the disk's VM and host,
+// forwards the resize to the node agent, and updates the disk record.
+func (m *Manager) ResizeDisk(ctx context.Context, diskID string, newSizeBytes int64) error {
+	if diskID == "" {
+		return fmt.Errorf("disk_id is required")
+	}
+	if newSizeBytes <= 0 {
+		return fmt.Errorf("new_size_bytes must be positive")
+	}
+
+	disk, err := m.store.GetDisk(ctx, diskID)
+	if err != nil {
+		return fmt.Errorf("get disk: %w", err)
+	}
+
+	var hostID string
+	if disk.VMID != nil && *disk.VMID != "" {
+		vm, err := m.store.GetVM(ctx, *disk.VMID)
+		if err != nil {
+			return fmt.Errorf("get VM for disk: %w", err)
+		}
+		if vm.HostID == nil || *vm.HostID == "" {
+			return fmt.Errorf("VM %s has no host assigned", *disk.VMID)
+		}
+		hostID = *vm.HostID
+	} else if disk.StoragePoolID != nil && *disk.StoragePoolID != "" {
+		return fmt.Errorf("disk %s is not attached to a VM; storage pool resize not yet supported", diskID)
+	} else {
+		return fmt.Errorf("disk %s has no VM or storage pool assigned", diskID)
+	}
+
+	ctrl := m.vmController(hostID)
+	if ctrl == nil {
+		return fmt.Errorf("host %s has no registered node agent", hostID)
+	}
+
+	resizer, ok := ctrl.(interface {
+		ResizeDisk(ctx context.Context, diskID string, newSizeBytes int64) error
+	})
+	if !ok {
+		return fmt.Errorf("node agent for host %s does not support disk resize", hostID)
+	}
+
+	if err := resizer.ResizeDisk(ctx, diskID, newSizeBytes); err != nil {
+		return fmt.Errorf("node agent resize disk: %w", err)
+	}
+
+	if err := m.store.UpdateDisk(ctx, diskID, map[string]interface{}{
+		"size_bytes": newSizeBytes,
+	}); err != nil {
+		return fmt.Errorf("update disk size: %w", err)
+	}
+
+	log.Printf("Disk %s resized to %d bytes", diskID, newSizeBytes)
+	return nil
+}
+
+
+

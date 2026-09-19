@@ -104,6 +104,28 @@ func (l *Libvirt) DestroyVM(ctx context.Context, id string) error {
     return nil
 }
 
+// CreateStoragePool creates a libvirt storage pool.
+func (l *Libvirt) CreateStoragePool(ctx context.Context, id, name, poolType, path string) error {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    if !l.connected {
+        return fmt.Errorf("not connected")
+    }
+    // Stub — real impl: l.conn.StoragePoolDefineXML(xml, 0)
+    return nil
+}
+
+// DeleteStoragePool deletes a libvirt storage pool.
+func (l *Libvirt) DeleteStoragePool(ctx context.Context, id string) error {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    if !l.connected {
+        return fmt.Errorf("not connected")
+    }
+    // Stub — real impl: pool.Destroy(); pool.Undefine()
+    return nil
+}
+
 // CreateVolume creates a storage volume on a pool.
 func (l *Libvirt) CreateVolume(ctx context.Context, pool, name string, format string, size uint64) error {
     l.mu.Lock()

@@ -779,3 +779,37 @@ func (d *DB) DeleteDatacenter(ctx context.Context, id string) error {
 	_, err := d.ExecContext(ctx, "DELETE FROM datacenter WHERE id = $1", id)
 	return err
 }
+
+// GetDisk retrieves a disk by ID.
+func (d *DB) GetDisk(ctx context.Context, id string) (*Disk, error) {
+	row := d.QueryRowContext(ctx, `
+        SELECT id, tenant_id, vm_id, storage_pool_id, name, size_bytes, format, path, bus, mounted, created_at, updated_at
+        FROM disk WHERE id = $1
+    `, id)
+	var disk Disk
+	err := row.Scan(&disk.ID, &disk.TenantID, &disk.VMID, &disk.StoragePoolID, &disk.Name, &disk.SizeBytes, &disk.Format, &disk.Path, &disk.Bus, &disk.Mounted, &disk.CreatedAt, &disk.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &disk, nil
+}
+
+// UpdateDisk updates a disk's fields.
+func (d *DB) UpdateDisk(ctx context.Context, id string, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return fmt.Errorf("no updates provided")
+	}
+	setClauses := make([]string, 0, len(updates))
+	args := make([]interface{}, 0, len(updates))
+	i := 1
+	for col, val := range updates {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i))
+		args = append(args, val)
+		i++
+	}
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE disk SET %s WHERE id = $%d",
+		joinStrings(setClauses, ", "), len(args))
+	_, err := d.ExecContext(ctx, query, args...)
+	return err
+}

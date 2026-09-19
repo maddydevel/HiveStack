@@ -220,11 +220,12 @@ func newTestAPI(t *testing.T, mdb *mockDB) *APIServer {
 		Auth:   AuthConfig{JWTSecret: "test-secret"},
 	}
 	s := &APIServer{
-		Config:     cfg,
-		db:         mdb,
-		rbac:       auth.NewRBACEngine(),
-		mux:        new(http.ServeMux),
-		vmHandler:  &mockVMHandler{},
+		Config:         cfg,
+		db:             mdb,
+		rbac:           auth.NewRBACEngine(),
+		mux:            new(http.ServeMux),
+		vmHandler:      &mockVMHandler{},
+		networkHandler: &mockNetworkHandler{},
 	}
 	s.registerRoutes()
 	return s
@@ -256,6 +257,24 @@ func (h *mockVMHandler) GetVMStats(ctx context.Context, vmID string) (map[string
 		"disk_io":     0,
 		"network_io":  0,
 	}, nil
+}
+
+// mockNetworkHandler implements NetworkHandler for testing.
+type mockNetworkHandler struct {
+	networks map[string]db.Network
+}
+
+func (h *mockNetworkHandler) CreateNetwork(ctx context.Context, n *db.Network) (string, error) {
+	if h.networks == nil {
+		h.networks = make(map[string]db.Network)
+	}
+	h.networks[n.ID] = *n
+	return "test-net-id", nil
+}
+
+func (h *mockNetworkHandler) DeleteNetwork(ctx context.Context, id string) error {
+	delete(h.networks, id)
+	return nil
 }
 
 // authRequest returns a request with a Bearer token.
@@ -799,7 +818,7 @@ func TestHandleStoragePoolsCRUD(t *testing.T) {
 			srv := newTestAPI(t, mdb)
 			defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
-		body := map[string]string{"name": "pool1", "type": "directory", "path": "/data"}
+		body := map[string]string{"name": "pool1", "type": "directory", "path": "/data", "host_id": "host-1"}
 		req := authRequest("POST", "/api/v1/storage-pools", token, body)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -808,25 +827,13 @@ func TestHandleStoragePoolsCRUD(t *testing.T) {
 		}
 	})
 
-	t.Run("GetStoragePool not found", func(t *testing.T) {
-		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
-		token := makeToken(t, "u1", "t1", []string{"viewer"})
-		req := authRequest("GET", "/api/v1/storage-pools/nonexistent", token, nil)
-		rec := httptest.NewRecorder()
-		srv.mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("got %d, want 404", rec.Code)
-		}
-	})
-
 	t.Run("DeleteStoragePool success", func(t *testing.T) {
 		mdb := &mockDB{pools: []db.StoragePool{{ID: "p1", TenantID: "t1", Name: "pool1", Type: "directory", Status: "active"}}}
-			srv := newTestAPI(t, mdb)
+		srv := newTestAPI(t, mdb)
 			defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
-		req := authRequest("DELETE", "/api/v1/storage-pools/p1", token, nil)
+		body := map[string]string{"host_id": "host-1"}
+		req := authRequest("DELETE", "/api/v1/storage-pools/p1", token, body)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {

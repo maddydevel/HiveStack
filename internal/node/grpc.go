@@ -245,11 +245,14 @@ func (s *nodeService) ExecuteCommand(ctx context.Context, req *proto.ExecuteComm
             result = fmt.Sprintf("snapshot %s: %s (simulated)", action, name)
         }
     case proto.CommandType_VMResize:
-        size := req.Params["size"]
-        if size == "" {
-            err = fmt.Errorf("size parameter required for resize")
+        diskID := req.Params["disk_id"]
+        size := req.Params["new_size_bytes"]
+        if diskID == "" {
+            err = fmt.Errorf("disk_id parameter required for resize")
+        } else if size == "" {
+            err = fmt.Errorf("new_size_bytes parameter required for resize")
         } else {
-            result = fmt.Sprintf("resized to %s bytes (simulated)", size)
+            result = fmt.Sprintf("disk %s resized to %s bytes (simulated)", diskID, size)
         }
     case proto.CommandType_VMGetStats:
         result = "cpu_usage=0 memory_usage=0 disk_io=0 network_io=0"
@@ -265,6 +268,9 @@ func (s *nodeService) ExecuteCommand(ctx context.Context, req *proto.ExecuteComm
         name := req.Params["name"]
         bridge := req.Params["bridge"]
         result = fmt.Sprintf("network %s created on bridge %s (simulated)", name, bridge)
+    case proto.CommandType_NetworkDelete:
+        name := req.Params["name"]
+        result = fmt.Sprintf("network %s deleted (simulated)", name)
     default:
         err = fmt.Errorf("unsupported command type: %d", req.CommandType)
     }

@@ -38,9 +38,11 @@ type VMMigrator interface {
 }
 
 var (
-    _ VMController = (*Agent)(nil)
-    _ VMController = (*Client)(nil)
-    _ VMMigrator   = (*Client)(nil)
+	_ VMController     = (*Agent)(nil)
+	_ VMController     = (*Client)(nil)
+	_ VMMigrator       = (*Client)(nil)
+	_ StorageController = (*Client)(nil)
+	_ NetworkController = (*Client)(nil)
 )
 
 // Client is a gRPC client for one node agent.
@@ -183,6 +185,47 @@ func (c *Client) DeleteSnapshot(ctx context.Context, vmID, snapshotID string) er
 	return c.execute(ctx, c.timeout, proto.CommandType_VMSnapshot, vmID, params)
 }
 
+// StorageController is the set of storage operations the Manager needs from a
+// node agent for storage pool lifecycle management.
+type StorageController interface {
+	CreateStoragePool(ctx context.Context, id, name, poolType, path string) error
+	DeleteStoragePool(ctx context.Context, id string) error
+}
+
+// NetworkController is the set of network operations the Manager needs from a
+// node agent for network lifecycle management.
+type NetworkController interface {
+	CreateNetwork(ctx context.Context, id, name, bridge string) error
+	DeleteNetwork(ctx context.Context, id, name string) error
+}
+
+var _ StorageController = (*Client)(nil)
+var _ NetworkController = (*Client)(nil)
+
+// CreateStoragePool creates a storage pool on the remote node via gRPC.
+func (c *Client) CreateStoragePool(ctx context.Context, id, name, poolType, path string) error {
+	if id == "" {
+		return fmt.Errorf("storage pool id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("storage pool name is required")
+	}
+	params := map[string]string{
+		"name": name,
+		"type": poolType,
+		"path": path,
+	}
+	return c.execute(ctx, c.timeout, proto.CommandType_StorageCreate, id, params)
+}
+
+// DeleteStoragePool deletes a storage pool on the remote node via gRPC.
+func (c *Client) DeleteStoragePool(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("storage pool id is required")
+	}
+	return c.execute(ctx, c.timeout, proto.CommandType_StorageDelete, id, nil)
+}
+
 // GetVMStats returns runtime statistics for the VM with the given ID.
 func (c *Client) GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error) {
 	if vmID == "" {
@@ -214,4 +257,45 @@ func (c *Client) GetVMStats(ctx context.Context, vmID string) (map[string]interf
 	}
 	_ = resp.Result // in real implementation, parse resp.Result
 	return stats, nil
+}
+
+// ResizeDisk resizes a disk on the remote node via gRPC ExecuteCommand with VMResize.
+func (c *Client) ResizeDisk(ctx context.Context, diskID string, newSizeBytes int64) error {
+	if diskID == "" {
+		return fmt.Errorf("disk_id is required")
+	}
+	if newSizeBytes <= 0 {
+		return fmt.Errorf("new_size_bytes must be positive")
+	}
+	params := map[string]string{
+		"disk_id":        diskID,
+		"new_size_bytes": fmt.Sprintf("%d", newSizeBytes),
+	}
+	return c.execute(ctx, c.timeout, proto.CommandType_VMResize, diskID, params)
+}
+
+// CreateNetwork creates a network on the remote node via gRPC ExecuteCommand with NetworkCreate.
+func (c *Client) CreateNetwork(ctx context.Context, id, name, bridge string) error {
+	if id == "" {
+		return fmt.Errorf("network id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("network name is required")
+	}
+	params := map[string]string{
+		"name":   name,
+		"bridge": bridge,
+	}
+	return c.execute(ctx, c.timeout, proto.CommandType_NetworkCreate, id, params)
+}
+
+// DeleteNetwork deletes a network on the remote node via gRPC ExecuteCommand with NetworkDelete.
+func (c *Client) DeleteNetwork(ctx context.Context, id, name string) error {
+	if id == "" {
+		return fmt.Errorf("network id is required")
+	}
+	params := map[string]string{
+		"name": name,
+	}
+	return c.execute(ctx, c.timeout, proto.CommandType_NetworkDelete, id, params)
 }
