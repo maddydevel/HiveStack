@@ -33,6 +33,7 @@ type grpcServer struct {
     lis     net.Listener
     srv     *grpc.Server
     addr    string
+    opts    []grpc.ServerOption
     running bool
 }
 
@@ -42,11 +43,13 @@ type nodeService struct {
     proto.UnimplementedNodeAgentServer
 }
 
-// NewGRPCServer creates a gRPC server for the node agent.
-func NewGRPCServer(agent *Agent, addr string) (*grpcServer, error) {
+// NewGRPCServer creates a gRPC server for the node agent. Extra opts are passed
+// to grpc.NewServer; supply grpc.Creds to serve over TLS (see ServerTLSOption).
+func NewGRPCServer(agent *Agent, addr string, opts ...grpc.ServerOption) (*grpcServer, error) {
     s := &grpcServer{
         agent: agent,
         addr:  addr,
+        opts:  opts,
     }
     return s, nil
 }
@@ -67,7 +70,8 @@ func (gs *grpcServer) Start(ctx context.Context) error {
     }
     gs.lis = lis
 
-    gs.srv = grpc.NewServer(grpc.ForceServerCodec(proto.JSONCodec()))
+    srvOpts := append([]grpc.ServerOption{grpc.ForceServerCodec(proto.JSONCodec())}, gs.opts...)
+    gs.srv = grpc.NewServer(srvOpts...)
     proto.RegisterNodeAgentServer(gs.srv, &nodeService{grpcServer: gs})
 
     log.Printf("[gRPC] Node agent gRPC server listening on %s", gs.addr)

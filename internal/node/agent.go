@@ -42,6 +42,8 @@ import (
     "sync"
     "time"
 
+    "google.golang.org/grpc"
+
     "github.com/maddydevel/HiveStack/internal/config"
     "github.com/maddydevel/HiveStack/internal/libvirt"
 )
@@ -92,7 +94,17 @@ func (a *Agent) Run(ctx context.Context) error {
 
     // Start gRPC server first (before libvirt connection so Manager can reach us)
     if a.config.GRPCAddress != "" {
-        grpcSrv, err := NewGRPCServer(a, a.config.GRPCAddress)
+        var srvOpts []grpc.ServerOption
+        tlsOpt, err := ServerTLSOption(a.config.TLSConfig)
+        if err != nil {
+            return fmt.Errorf("configure gRPC TLS: %w", err)
+        }
+        if tlsOpt != nil {
+            srvOpts = append(srvOpts, tlsOpt)
+        } else {
+            log.Printf("[gRPC] WARNING: no TLS configured; serving node agent gRPC in plaintext without client authentication")
+        }
+        grpcSrv, err := NewGRPCServer(a, a.config.GRPCAddress, srvOpts...)
         if err != nil {
             return fmt.Errorf("create gRPC server: %w", err)
         }

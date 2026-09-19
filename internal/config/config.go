@@ -15,6 +15,11 @@ type ServerConfig struct {
     TLSEnabled  bool           `mapstructure:"tls_enabled"`
     TLSCertFile string         `mapstructure:"tls_cert_file"`
     TLSKeyFile  string         `mapstructure:"tls_key_file"`
+    // TLSCAFile is the CA bundle used to verify client certificates (optional).
+    TLSCAFile string `mapstructure:"tls_ca_file"`
+    // TLSDevMode generates a self-signed certificate instead of reading the
+    // cert and key files. Development only; ignored unless TLSEnabled.
+    TLSDevMode bool           `mapstructure:"tls_dev_mode"`
     Database    DatabaseConfig `mapstructure:"database"`
     Auth        AuthConfig     `mapstructure:"auth"`
 }
@@ -73,6 +78,7 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
     v.SetDefault("host", "0.0.0.0")
     v.SetDefault("port", 8080)
     v.SetDefault("tls_enabled", false)
+    v.SetDefault("tls_dev_mode", false)
     v.SetDefault("database.dsn", "postgres://hivestack:hivestack@localhost:5432/hivestack?sslmode=disable")
     v.SetDefault("auth.jwt_secret", "change-me-in-production")
     v.SetDefault("auth.token_expiry", "24h")

@@ -50,7 +50,7 @@ func (c NodeTLSConfig) BuildTLSConfig() (*tls.Config, error) {
 		return nil, fmt.Errorf("load client certificate: %w", err)
 	}
 
-	caCertPool, err := loadCAPool(c.CAFile)
+	caCertPool, err := LoadCAPool(c.CAFile)
 	if err != nil {
 		return nil, fmt.Errorf("load CA pool: %w", err)
 	}

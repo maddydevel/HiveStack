@@ -33,8 +33,8 @@ func LoadCertificate(certFile, keyFile string) (tls.Certificate, error) {
 	return cert, nil
 }
 
-// loadCAPool reads a CA certificate file and adds it to a x509.CertPool.
-func loadCAPool(caFile string) (*x509.CertPool, error) {
+// LoadCAPool reads a CA certificate file and adds it to a x509.CertPool.
+func LoadCAPool(caFile string) (*x509.CertPool, error) {
 	caCert, err := os.ReadFile(caFile)
 	if err != nil {
 		return nil, fmt.Errorf("read CA file: %w", err)

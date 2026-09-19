@@ -110,6 +110,7 @@ package api
 
 import (
     "context"
+    "crypto/tls"
     "encoding/json"
     "fmt"
     "net/http"
@@ -119,6 +120,7 @@ import (
     "github.com/maddydevel/HiveStack/internal/db"
     "github.com/maddydevel/HiveStack/internal/ha"
     "github.com/maddydevel/HiveStack/internal/metrics"
+    hivetls "github.com/maddydevel/HiveStack/internal/tls"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -180,6 +182,9 @@ type APIServer struct {
 	compliance compliance.ComplianceStore
 	vmHandler  VMHandler
 	mux        *http.ServeMux
+	// Transport: httpServer is built by New; tlsConfig is nil unless TLS is enabled.
+	httpServer *http.Server
+	tlsConfig  *tls.Config
 	// HA integration
 	haController    haControllerIface
 	haOrchestrator  haOrchestratorIface
@@ -215,6 +220,8 @@ type policyManagerIface interface {
 // Config holds the API server configuration.
 type Config struct {
     Server   ServerConfig
+    // TLS holds the certificate paths used when Server.TLSEnabled is set.
+    TLS      hivetls.CertConfig
     Database DatabaseConfig
     Auth     AuthConfig
     Node     NodeConfig
@@ -222,11 +229,13 @@ type Config struct {
 
 // ServerConfig holds the server configuration.
 type ServerConfig struct {
-    Host        string
-    Port        int
-    TLSEnabled  bool
-    TLSCertFile string
-    TLSKeyFile  string
+    Host       string
+    Port       int
+    // TLSEnabled serves HTTPS using Config.TLS. Disabled by default.
+    TLSEnabled bool
+    // TLSDevMode generates a self-signed certificate instead of requiring
+    // Config.TLS files to exist. Development only; ignored unless TLSEnabled.
+    TLSDevMode bool
 }
 
 // DatabaseConfig holds the database configuration.
@@ -255,6 +264,9 @@ func New(cfg *Config, database *db.DB) (*APIServer, error) {
     }
     s.mux = new(http.ServeMux)
     s.registerRoutes()
+    if err := s.setupHTTPServer(); err != nil {
+        return nil, err
+    }
     return s, nil
 }
 
@@ -359,16 +371,6 @@ func (s *APIServer) handleMetrics(w http.ResponseWriter, r *http.Request) {
     promhttp.Handler().ServeHTTP(w, r)
 }
 
-// Run starts the API server.
-func (s *APIServer) Run() error {
-    addr := fmt.Sprintf("%s:%d", s.Config.Server.Host, s.Config.Server.Port)
-    if s.Config.Server.TLSEnabled {
-        return fmt.Errorf("TLS server not yet implemented - set tls_enabled: false")
-    }
-    fmt.Printf("HiveStack API server starting on %s (v%s)\n", addr, Version)
-    return http.ListenAndServe(addr, s.mux)
-}
-
 // SetHAController sets the HA controller for API handlers.
 func (s *APIServer) SetHAController(ctrl haControllerIface) {
 	s.haController = ctrl
@@ -387,11 +389,6 @@ func (s *APIServer) SetPolicyManager(pm policyManagerIface) {
 // SetVMHandler sets the VM lifecycle handler for API handlers.
 func (s *APIServer) SetVMHandler(h VMHandler) {
 	s.vmHandler = h
-}
-
-// Shutdown gracefully shuts down the server.
-func (s *APIServer) Shutdown() error {
-	return nil
 }
 
 // UpdateHostMetrics records Prometheus metrics for a host.

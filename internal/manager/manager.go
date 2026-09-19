@@ -21,6 +21,7 @@ import (
 	"github.com/maddydevel/HiveStack/internal/compliance"
 	"github.com/maddydevel/HiveStack/internal/db"
 	"github.com/maddydevel/HiveStack/internal/ha"
+	hivetls "github.com/maddydevel/HiveStack/internal/tls"
 	"github.com/maddydevel/HiveStack/internal/libvirt"
 	"github.com/maddydevel/HiveStack/internal/node"
 )
@@ -111,6 +112,11 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
             Host:       "0.0.0.0",
             Port:       8080,
             TLSEnabled: false,
+        },
+        TLS: hivetls.CertConfig{
+            CertFile: "", // set from config if TLS enabled
+            KeyFile:  "",
+            CAFile:   "",
         },
         Database: api.DatabaseConfig{
             DSN: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable",
