@@ -30,8 +30,8 @@ Build: `go build ./...` ✅ | Vet: `go vet ./...` ✅
 | Systemd units | ✅ | Manager + Node Agent service files with security hardening |
 | Prometheus metrics | ✅ | /metrics endpoint, host/VM/cluster/HANA metrics |
 | Structured logging | ✅ | log.Printf/log.Println (slog-compatible structured output) |
-| KIWI appliance | 🔲 | SUSE SLES 15 SP7 appliance packaging (planned) |
-| Web UI | 🔲 | React 18 + TypeScript + Vite + Tailwind (planned) |
+| KIWI appliance | ✅ | SLES 15 SP7 appliance packaging with first-boot initialization |
+| Web UI | ✅ | React 18 + TypeScript + Vite + Tailwind (303KB JS, 15 pages) |
 | HA (non-HANA) | 🔲 | Host failure detection + VM restart (planned) |
 | Security hardening | 🔲 | TLS/mTLS, secrets mgmt, disk encryption, AppArmor (planned) |
 | VMware migration | 🔲 | Low priority, skip in first stable version |
