@@ -191,6 +191,9 @@ type APIServer struct {
 	haController    haControllerIface
 	haOrchestrator  haOrchestratorIface
 	policyManager   policyManagerIface
+	// Migration integration
+	migrationHandler migrationManager
+	migrationJobTracker *migrationJobTracker
 }
 
 // VMHandler defines the VM lifecycle operations the API server delegates to.
@@ -279,6 +282,7 @@ func New(cfg *Config, database *db.DB) (*APIServer, error) {
     }
     s.mux = new(http.ServeMux)
     s.registerRoutes()
+    s.migrationJobTracker = newMigrationJobTracker()
     if err := s.setupHTTPServer(); err != nil {
         return nil, err
     }
@@ -374,6 +378,9 @@ func (s *APIServer) registerRoutes() {
 
     // Register HA routes
     s.registerHARoutes()
+
+    // Register migration routes
+    s.registerMigrationRoutes()
 
     // Metrics (Prometheus scraping - no auth required)
     s.mux.HandleFunc("GET /metrics", s.handleMetrics)

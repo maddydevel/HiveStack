@@ -24,6 +24,7 @@ import (
 	hivetls "github.com/maddydevel/HiveStack/internal/tls"
 	"github.com/maddydevel/HiveStack/internal/libvirt"
 	"github.com/maddydevel/HiveStack/internal/node"
+	"github.com/maddydevel/HiveStack/migration"
 )
 
 // roleContextKey is the context key for the authenticated role.
@@ -144,6 +145,7 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
     m.apiServer.SetVMHandler(m)
     m.apiServer.SetStorageHandler(m)
     m.apiServer.SetNetworkHandler(m)
+    m.apiServer.SetMigrationHandler(m)
 
     m.wg.Add(1)
     go func() {
@@ -796,6 +798,56 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 // They run on a context detached from the caller's, because the caller giving
 // up must not stop the manager from recording where the VM ended up.
 const migrationTimeout = 10 * time.Second
+
+// CreateVMFromVMX creates a VM from a parsed VMX specification. It converts
+// the VMX definition into a HiveStack VM spec, validates compliance, and
+// calls CreateVM.
+func (m *Manager) CreateVMFromVMX(ctx context.Context, spec migration.VMXImportSpec, tenantID string) (string, error) {
+	if spec.ParsedVM == nil {
+		return "", fmt.Errorf("parsed VMX is required")
+	}
+	if spec.HostID == "" {
+		return "", fmt.Errorf("host_id is required")
+	}
+
+	parsed := spec.ParsedVM
+
+	// Determine role - check annotation or guestOS for hints
+	role := "generic"
+	vmProfile := &compliance.VMProfile{
+		Role:              role,
+		CPUs:              parsed.CPUs,
+		CPUAllocation:     "shared",
+		MemoryBytes:       int64(parsed.MemoryMB) * 1024 * 1024,
+		HugepagesEnabled:  false,
+		BallooningAllowed: true,
+		SwapAllowed:       true,
+	}
+
+	// Compliance validation for the import
+	result := compliance.ValidateHANAProfile(vmProfile)
+	if !result.Passed && role == "hana" {
+		return "", fmt.Errorf("HANA compliance check failed: %d violations", len(result.Violations))
+	}
+
+	// Convert VMX to VMSpec
+	vmSpec := VMSpec{
+		Name:        parsed.DisplayName,
+		Description: parsed.Annotation,
+		HostID:      spec.HostID,
+		CPUS:        parsed.CPUs,
+		MemoryBytes: int64(parsed.MemoryMB) * 1024 * 1024,
+		OS:          parsed.GuessOS(),
+		Role:        role,
+	}
+
+	// Add cluster ID if provided
+	if spec.ClusterID != "" {
+		vmSpec.Description = vmSpec.Description + " [cluster=" + spec.ClusterID + "]"
+	}
+
+	return m.CreateVM(ctx, vmSpec)
+}
 
 // MigrateVM live-migrates a running VM to targetHostID. It verifies that the
 // source node agent can migrate and that the target host is usable and has

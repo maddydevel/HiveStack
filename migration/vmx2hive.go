@@ -321,37 +321,50 @@ func (p *ParsedVM) ConvertToHiveStackSpec() map[string]interface{} {
     return spec
 }
 
+// GuessOS returns a best-guess OS identifier from the guestOS field.
+func (p *ParsedVM) GuessOS() string {
+	os := "linux"
+	guest := strings.ToLower(p.GuestOS)
+
+	if strings.Contains(guest, "windows") || strings.Contains(guest, "win") {
+		if strings.Contains(guest, "2019") || strings.Contains(guest, "2022") {
+			os = "windows2022"
+		} else if strings.Contains(guest, "2016") {
+			os = "windows2016"
+		} else {
+			os = "windows"
+		}
+	} else if strings.Contains(guest, "sles") || strings.Contains(guest, "suse") {
+		if strings.Contains(guest, "15") {
+			os = "sles15"
+		} else {
+			os = "sles"
+		}
+	} else if strings.Contains(guest, "ubuntu") {
+		os = "ubuntu"
+	} else if strings.Contains(guest, "rhel") || strings.Contains(guest, "centos") {
+		os = "rhel"
+	}
+
+	return os
+}
+
+// guessOS is an internal alias for backward compatibility.
 func (p *ParsedVM) guessOS() string {
-    os := "linux"
-    guest := strings.ToLower(p.GuestOS)
-
-    if strings.Contains(guest, "windows") || strings.Contains(guest, "win") {
-        if strings.Contains(guest, "2019") || strings.Contains(guest, "2022") {
-            os = "windows2022"
-        } else if strings.Contains(guest, "2016") {
-            os = "windows2016"
-        } else {
-            os = "windows"
-        }
-    } else if strings.Contains(guest, "sles") || strings.Contains(guest, "suse") {
-        if strings.Contains(guest, "15") {
-            os = "sles15"
-        } else {
-            os = "sles"
-        }
-    } else if strings.Contains(guest, "ubuntu") {
-        os = "ubuntu"
-    } else if strings.Contains(guest, "rhel") || strings.Contains(guest, "centos") {
-        os = "rhel"
-    }
-
-    return os
+	return p.GuessOS()
 }
 
 // ValidateVMX validates that the VMX file can be parsed without errors.
 func ValidateVMX(path string) error {
     _, err := ParseVMX(path)
     return err
+}
+
+// VMXImportSpec wraps a parsed VMX for import into HiveStack.
+type VMXImportSpec struct {
+	ParsedVM  *ParsedVM `json:"parsed_vm"`
+	HostID    string    `json:"host_id"`
+	ClusterID string    `json:"cluster_id,omitempty"`
 }
 
 // GetVMXInfo returns a summary of the VMX file without full parsing.
