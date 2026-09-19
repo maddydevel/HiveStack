@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<image schemaversion="7.5" name="hivestack-appliance">
+    <description>HiveStack KVM Virtualization Appliance on SLES 15 SP7</description>
+    
+    <!-- Repository configuration -->
+    <repositories>
+        <repository source="obs" type="rpm-md" alias="SLES15-SP7-Pool" priority="1">
+            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/GA/standard/"/>
+        </repository>
+        <repository source="obs" type="rpm-md" alias="SLES15-SP7-Updates" priority="1">
+            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/Update/standard/"/>
+        </repository>
+        <repository source="obs" type="rpm-md" alias="Virtualization" priority="2">
+            <source path="https://download.opensuse.org/repositories/Virtualization:/kvm/SLE_15_SP7/"/>
+        </repository>
+        <repository source="obs" type="rpm-md" alias="SystemsManagement" priority="2">
+            <source path="https://download.opensuse.org/repositories/systemsmanagement/SLE_15_SP7/"/>
+        </repository>
+    </repositories>
+
+    <!-- Package list -->
+    <packages type="image">
+        <!-- Base system -->
+        <package name="aaa_base"/>
+        <package name="bash"/>
+        <package name="coreutils"/>
+        <package name="grep"/>
+        <package name="sed"/>
+        <package name="gzip"/>
+        <package name="tar"/>
+        <package name="rpm"/>
+        <package name="systemd"/>
+        <package name="systemd-sysvinit"/>
+        <package name="udev"/>
+        <package name="kernel-default"/>
+        <package name="kernel-firmware-all"/>
+        <package name="dracut"/>
+        <package name="grub2"/>
+        <package name="grub2-x86_64-efi"/>
+        <package name="shim"/>
+
+        <!-- Network -->
+        <package name="NetworkManager"/>
+        <package name="NetworkManager-wifi"/>
+        <package name="iproute2"/>
+        <package name="iputils"/>
+        <package name="ethtool"/>
+        <package name="bridge-utils"/>
+        <package name="vlan"/>
+        <package name="openvswitch"/>
+        <package name="openvswitch-kmp-default"/>
+
+        <!-- Virtualization (KVM/QEMU/libvirt) -->
+        <package name="qemu-kvm"/>
+        <package name="qemu-tools"/>
+        <package name="libvirt-daemon"/>
+        <package name="libvirt-daemon-driver-qemu"/>
+        <package name="libvirt-daemon-config-network"/>
+        <package name="libvirt-client"/>
+        <package name="virt-install"/>
+        <package name="virt-manager-common"/>
+        <package name="libguestfs-tools"/>
+        <package name="guestfsd"/>
+        <package name="ovmf"/>
+        <package name="edk2-ovmf-code"/>
+        <package name="edk2-ovmf-vars"/>
+
+        <!-- Storage -->
+        <package name="lvm2"/>
+        <package name="multipath-tools"/>
+        <package name="nfs-client"/>
+        <package name="iscsi-initiator-utils"/>
+        <package name="ceph-common"/>
+        <package name="rbd-nbd"/>
+
+        <!-- Database -->
+        <package name="postgresql15-server"/>
+        <package name="postgresql15-contrib"/>
+        <package name="postgresql15-client"/>
+
+        <!-- Monitoring -->
+        <package name="prometheus-node-exporter"/>
+        <package name="prometheus-alertmanager"/>
+        <package name="grafana"/>
+
+        <!-- Management -->
+        <package name="cockpit"/>
+        <package name="cockpit-machines"/>
+        <package name="cockpit-podman"/>
+        <package name="cockpit-storaged"/>
+        <package name="cockpit-networkmanager"/>
+        <package name="podman"/>
+        <package name="buildah"/>
+        <package name="skopeo"/>
+        <package name="crictl"/>
+
+        <!-- Security -->
+        <package name="apparmor"/>
+        <package name="apparmor-profiles"/>
+        <package name="apparmor-utils"/>
+        <package name="audit"/>
+        <package name="audit-plugins-python3"/>
+
+        <!-- Utilities -->
+        <package name="vim"/>
+        <package name="tmux"/>
+        <package name="htop"/>
+        <package name="iotop"/>
+        <package name="sysstat"/>
+        <package name="strace"/>
+        <package name="tcpdump"/>
+        <package name="nmap"/>
+        <package name="bind-utils"/>
+        <package name="curl"/>
+        <package name="wget"/>
+        <package name="rsync"/>
+        <package name="chrony"/>
+        <package name="logrotate"/>
+        <package name="journalctl"/>
+
+        <!-- Python for scripts -->
+        <package name="python3"/>
+        <package name="python3-pip"/>
+        <package name="python3-requests"/>
+        <package name="python3-psutil"/>
+
+        <!-- HiveStack binaries (will be added in config.sh) -->
+    </packages>
+
+    <packages type="bootstrap">
+        <package name="kiwi-systemdeps"/>
+    </packages>
+
+    <!-- Users and groups -->
+    <users>
+        <user name="hivestack" password="" home="/var/lib/hivestack" groups="libvirt,kvm,disk,systemd-journal" shell="/bin/bash"/>
+        <user name="hivestack-node" password="" home="/var/lib/hivestack-node" groups="libvirt,kvm" shell="/bin/bash"/>
+    </users>
+
+    <!-- System configuration -->
+    <preferences>
+        <version>1.0.0</version>
+        <packagemanager>zypper</packagemanager>
+        <bootsplash-theme>SLE</bootsplash-theme>
+        <bootloader-theme>SLE</bootloader-theme>
+        <locale>en_US</locale>
+        <keytable>us</keytable>
+        <timezone>UTC</timezone>
+        <hwclock>utc</hwclock>
+        <type boot="systemd/sles15" bootloader="grub2" container="no" fstype="ext4" fsoptions="defaults,noatime" image="iso" installiso="true">
+            <size unit="G">10</size>
+        </type>
+    </preferences>
+
+    <!-- Services to enable -->
+    <services>
+        <service name="NetworkManager"/>
+        <service name="libvirtd"/>
+        <service name="postgresql"/>
+        <service name="chronyd"/>
+        <service name="cockpit"/>
+        <service name="prometheus-node-exporter"/>
+        <service name="apparmor"/>
+        <service name="auditd"/>
+        <service name="hivestack-manager"/>
+        <service name="hivestack-node"/>
+    </services>
+
+    <!-- Files to overlay -->
+    <overlay>
+        <filesystem config="/overlay" />
+    </overlay>
+</image>

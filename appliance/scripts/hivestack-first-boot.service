@@ -1,0 +1,17 @@
+[Unit]
+Description=HiveStack Appliance First Boot Setup
+Documentation=https://github.com/maddydevel/HiveStack
+After=network.target postgresql.service libvirtd.service
+Before=hivestack-manager.service hivestack-node.service
+ConditionPathExists=/etc/hivestack/.first-boot
+
+[Service]
+Type=oneshot
+ExecStart=/tmp/HiveStack/appliance/scripts/first-boot.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutSec=600
+
+[Install]
+WantedBy=multi-user.target
