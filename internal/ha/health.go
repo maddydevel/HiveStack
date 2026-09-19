@@ -177,6 +177,18 @@ func (n *NodeHealth) GetState() HealthState {
 	return n.State
 }
 
+// getVMs returns a copy of the VMs list (thread-safe).
+func (n *NodeHealth) getVMs() []string {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if len(n.VMs) == 0 {
+		return nil
+	}
+	result := make([]string, len(n.VMs))
+	copy(result, n.VMs)
+	return result
+}
+
 // GetMissedCount returns the count of missed heartbeats (thread-safe).
 func (n *NodeHealth) GetMissedCount() int {
 	n.mu.RLock()
@@ -307,12 +319,10 @@ func (p *HeartbeatProcessor) CheckAll(now time.Time) []StateTransition {
 		expectedBeats := int(elapsed / p.threshold.HeartbeatInterval)
 
 		if expectedBeats > 0 {
-			node.mu.Lock()
 			oldState := currentState
 			node.MissHeartbeat(now, p.threshold.SuspectThreshold, p.threshold.OfflineThreshold)
-			newState := node.State
-			vms := append([]string{}, node.VMs...)
-			node.mu.Unlock()
+			newState := node.GetState()
+			vms := node.getVMs()
 
 			if oldState != newState {
 				transitions = append(transitions, StateTransition{

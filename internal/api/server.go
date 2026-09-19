@@ -359,9 +359,24 @@ func (s *APIServer) Run() error {
     return http.ListenAndServe(addr, s.mux)
 }
 
+// SetHAController sets the HA controller for API handlers.
+func (s *APIServer) SetHAController(ctrl haControllerIface) {
+	s.haController = ctrl
+}
+
+// SetHAOrchestrator sets the HA orchestrator for API handlers.
+func (s *APIServer) SetHAOrchestrator(orch haOrchestratorIface) {
+	s.haOrchestrator = orch
+}
+
+// SetPolicyManager sets the policy manager for API handlers.
+func (s *APIServer) SetPolicyManager(pm policyManagerIface) {
+	s.policyManager = pm
+}
+
 // Shutdown gracefully shuts down the server.
 func (s *APIServer) Shutdown() error {
-    return nil
+	return nil
 }
 
 // UpdateHostMetrics records Prometheus metrics for a host.

@@ -20,6 +20,7 @@ import (
 	"github.com/maddydevel/HiveStack/internal/auth"
 	"github.com/maddydevel/HiveStack/internal/compliance"
 	"github.com/maddydevel/HiveStack/internal/db"
+	"github.com/maddydevel/HiveStack/internal/ha"
 	"github.com/maddydevel/HiveStack/internal/node"
 )
 
@@ -28,15 +29,16 @@ type roleContextKey struct{}
 
 // Manager holds the HiveStack Manager state and all its subsystems.
 type Manager struct {
-    mu         sync.Mutex
-    db         *db.DB
-    rbac       *auth.RBACEngine
-    compliance *compliance.ComplianceStore
-    apiServer  *api.APIServer
-    nodes      map[string]*node.Agent
-    shutdownCh chan struct{}
-    wg         sync.WaitGroup
-    running    bool
+	mu         sync.Mutex
+	db         *db.DB
+	rbac       *auth.RBACEngine
+	compliance *compliance.ComplianceStore
+	apiServer  *api.APIServer
+	nodes      map[string]*node.Agent
+	shutdownCh chan struct{}
+	wg         sync.WaitGroup
+	running    bool
+	haSvc      *haService
 }
 
 // New creates a new HiveStack Manager.
@@ -45,13 +47,22 @@ func New(database *db.DB) (*Manager, error) {
     compliance := compliance.NewComplianceStore(database)
     nodes := make(map[string]*node.Agent)
 
-    return &Manager{
+    m := &Manager{
         db:         database,
         rbac:       rbac,
         compliance: compliance,
         nodes:      nodes,
         shutdownCh: make(chan struct{}),
-    }, nil
+    }
+
+    // Create the HA service (does not start it yet)
+    haSvc, err := NewHAService(m, ha.DefaultThresholds())
+    if err != nil {
+        return nil, fmt.Errorf("create HA service: %w", err)
+    }
+    m.haSvc = haSvc
+
+    return m, nil
 }
 
 // Run starts the Manager: initializes the API server and starts the main service loop.
@@ -66,6 +77,11 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
 
     log.Println("HiveStack Manager starting...")
 
+    // Start the HA service before the API server so HA data is available
+    if err := m.haSvc.Start(ctx); err != nil {
+        return fmt.Errorf("start HA service: %w", err)
+    }
+
     cfg := &api.Config{
         Server: api.ServerConfig{
             Host:       "0.0.0.0",
@@ -73,7 +89,7 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
             TLSEnabled: false,
         },
         Database: api.DatabaseConfig{
-            DSN: "postgres://hivestack:hivestack@localhost:5432/hivestack?sslmode=disable",
+            DSN: "postgres://hivestack:***@localhost:5432/hivestack?sslmode=disable",
         },
         Auth: api.AuthConfig{
             JWTSecret:   "change-me-in-production",
@@ -89,6 +105,9 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
         return fmt.Errorf("create API server: %w", err)
     }
     m.apiServer = apiServer
+
+    // Wire HA dependencies into the API server
+    m.wireHAIntoAPI()
 
     m.wg.Add(1)
     go func() {
@@ -808,9 +827,33 @@ func (m *Manager) UpdateNodeStatus(ctx context.Context, nodeID string, status st
 	return nil
 }
 
+// HAService returns the HA service instance.
+func (m *Manager) HAService() *haService {
+    return m.haSvc
+}
+
+// wireHAIntoAPI connects the HA subsystem to the API server.
+func (m *Manager) wireHAIntoAPI() {
+	if m.apiServer == nil || m.haSvc == nil {
+		return
+	}
+	if ctrl := m.haSvc.GetController(); ctrl != nil {
+		m.apiServer.SetHAController(&haControllerAdapter{ctrl: ctrl})
+	}
+	if orch := m.haSvc.GetOrchestrator(); orch != nil {
+		m.apiServer.SetHAOrchestrator(orch)
+	}
+	if pm := m.haSvc.GetPolicyManager(); pm != nil {
+		m.apiServer.SetPolicyManager(pm)
+	}
+}
+
 // Shutdown gracefully stops the manager.
 func (m *Manager) Shutdown() {
 	close(m.shutdownCh)
+	if m.haSvc != nil {
+		m.haSvc.Stop()
+	}
 	if m.apiServer != nil {
 		m.apiServer.Shutdown()
 	}
