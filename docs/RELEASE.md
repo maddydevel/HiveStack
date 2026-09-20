@@ -1,24 +1,26 @@
 # HiveStack Release Process
 
 **Version:** 1.0.0
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-20
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Versioning](#versioning)
-- [Release Branches](#release-branches)
+- [Version Bump Procedure](#version-bump-procedure)
+- [Changelog Update](#changelog-update)
+- [Git Tag Signing](#git-tag-signing)
+- [SBOM Generation](#sbom-generation)
 - [Release Checklist](#release-checklist)
-- [Release Procedure](#release-procedure)
-- [Hotfix Process](#hotfix-process)
-- [Rollback Procedure](#rollback-procedure)
+- [Canary Deployment](#canary-deployment)
+- [Rollback Criteria](#rollback-criteria)
 - [Post-Release](#post-release)
 
 ---
 
 ## Overview
 
-HiveStack follows a structured release process to ensure quality, stability, and traceability. All releases are automated through GitHub Actions.
+HiveStack follows a structured release process to ensure quality, stability, and traceability. All releases are automated through GitHub Actions with signed artifacts and comprehensive audit trails.
 
 ### Release Cadence
 
@@ -41,38 +43,170 @@ HiveStack uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
 Pre-release versions use suffixes: `v1.0.0-alpha.1`, `v1.0.0-beta.1`, `v1.0.0-rc.1`
 
-### Version Bump Procedure
+### Helm Chart Versioning
 
-1. Update version in source code (if hardcoded)
-2. Update `CHANGELOG.md`
-3. Create a git tag: `git tag -a v1.0.0 -m "Release v1.0.0"`
-4. Push tag: `git push origin v1.0.0`
-5. GitHub Actions automatically builds and publishes the release
+The Helm chart version in `appliance/helm/Chart.yaml` tracks both the chart version (`version`) and the application version (`appVersion`):
+
+```yaml
+apiVersion: v2
+name: hivestack
+description: HiveStack - VM Management Platform
+type: application
+version: 1.0.0        # Chart version (SemVer)
+appVersion: "1.0.0"   # Application version (matches git tag)
+```
+
+**Rules:**
+- `appVersion` MUST match the git tag version (without `v` prefix)
+- `version` follows chart-specific SemVer (bumped on chart-only changes)
+- Both versions MUST be updated in lockstep for application releases
 
 ---
 
-## Release Branches
+## Version Bump Procedure
 
-### Main Branch (`main`)
-- Always deployable
-- Protected branch
-- Requires PR review and CI pass
-- Tags on `main` trigger production releases
+### 1. Update Source Version References
 
-### Develop Branch (`develop`)
-- Integration branch for features
-- Nightly builds from this branch
-- Merged to `main` for release
+```bash
+# Update version in build configuration
+export NEW_VERSION="1.2.0"
 
-### Release Branches (`release/vX.Y`)
-- Created from `develop` when preparing a release
-- Only bug fixes allowed (no new features)
-- Merged to `main` and back to `develop`
+# If version is hardcoded in source:
+sed -i "s/version = \".*\"/version = \"${NEW_VERSION}\"/" cmd/version.go
+```
 
-### Hotfix Branches (`hotfix/vX.Y.Z`)
-- Created from `main` tag
-- Critical fixes only
-- Merged to `main` and `develop`
+### 2. Update Helm Chart
+
+```bash
+# Update appliance/helm/Chart.yaml
+yq e -i '.version = "${NEW_VERSION}"' appliance/helm/Chart.yaml
+yq e -i '.appVersion = "${NEW_VERSION}"' appliance/helm/Chart.yaml
+```
+
+### 3. Verify Build
+
+```bash
+go build ./...
+go vet ./...
+go test ./... -count=1
+```
+
+---
+
+## Changelog Update
+
+Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+
+### Update Steps
+
+1. Move entries from `[Unreleased]` to new version section:
+
+```markdown
+## [v1.2.0] — 2026-09-20
+
+### Added
+- New feature X
+
+### Changed
+- Modified behavior Y
+
+### Fixed
+- Bug Z
+
+### Security
+- CVE-2026-XXXX patch
+```
+
+2. Add compare link at bottom:
+
+```markdown
+[v1.2.0]: https://github.com/maddydevel/HiveStack/compare/v1.1.0...v1.2.0
+[Unreleased]: https://github.com/maddydevel/HiveStack/compare/v1.2.0...HEAD
+```
+
+3. Commit: `git commit -m "chore: update changelog for v${NEW_VERSION}"`
+
+---
+
+## Git Tag Signing
+
+All release tags MUST be signed with GPG.
+
+### Prerequisites
+
+```bash
+# Verify GPG key is configured
+git config --global user.signingkey YOUR_KEY_ID
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+### Create Signed Tag
+
+```bash
+# Create annotated, signed tag
+git tag -s v${NEW_VERSION} -m "Release v${NEW_VERSION}"
+
+# Verify signature
+git tag -v v${NEW_VERSION}
+
+# Push tag
+git push origin v${NEW_VERSION}
+```
+
+### Automated Signing (CI/CD)
+
+Tags created through GitHub Actions are signed with [cosign](https://sigstore.dev/) keyless signing:
+
+```bash
+# Keyless signing (CI)
+cosign sign-blob \
+  --output-signature hivestack-${NEW_VERSION}.sig \
+  --output-certificate hivestack-${NEW_VERSION}.cert \
+  dist/hivestack-${NEW_VERSION}-linux-amd64.tar.gz
+```
+
+---
+
+## SBOM Generation
+
+Software Bill of Materials (SBOM) is generated automatically for each release using Syft (SPDX + CycloneDX formats).
+
+### Manual Generation
+
+```bash
+# Install Syft
+brew install syft
+
+# Generate SPDX JSON SBOM
+syft dir:. -o spdx-json > sbom-spdx.json
+
+# Generate CycloneDX JSON SBOM
+syft dir:. -o cyclonedx-json > sbom-cyclonedx.json
+
+# Generate SBOM for container image
+syft ghcr.io/maddydevel/hivestack:${NEW_VERSION} -o spdx-json > sbom-image-spdx.json
+```
+
+### SBOM Attestation
+
+SBOM is attached to container images using cosign:
+
+```bash
+# Attach SBOM to container image
+cosign attach sbom \
+  --sbom sbom-spdx.json \
+  --type spdx \
+  ghcr.io/maddydevel/hivestack:${NEW_VERSION}
+```
+
+### Output Formats
+
+| Format | File | Purpose |
+|--------|------|---------|
+| SPDX JSON | `sbom-spdx.json` | Open standard, tool interoperability |
+| CycloneDX JSON | `sbom-cyclonedx.json` | Security-focused, vulnerability mapping |
+| Syft JSON | `sbom-syft.json` | Full detail, Syft-specific |
 
 ---
 
@@ -80,197 +214,158 @@ Pre-release versions use suffixes: `v1.0.0-alpha.1`, `v1.0.0-beta.1`, `v1.0.0-rc
 
 ### Pre-Release (1 week before)
 
-- [ ] All planned features merged to `develop`
-- [ ] All tests passing on `develop`
+- [ ] All planned features merged to `main`
+- [ ] All tests passing (`go test ./... -race`)
+- [ ] `go vet ./...` clean
 - [ ] Security scan clean (govulncheck, gosec, trivy)
-- [ ] Documentation updated (API docs, deployment guide, runbooks)
 - [ ] CHANGELOG.md updated with all changes since last release
-- [ ] Database migrations reviewed and tested
-- [ ] Backward compatibility verified (API, config, database)
-- [ ] Performance benchmarks run and documented
-- [ ] Release notes drafted
+- [ ] Version bumped in all relevant files
+- [ ] Helm Chart.yaml `version` and `appVersion` updated
+- [ ] Database migrations reviewed and tested (if applicable)
+- [ ] Backward compatibility verified
+- [ ] Performance benchmarks run
 
 ### Release Day
 
-- [ ] Create release branch from `develop`: `release/vX.Y.Z`
-- [ ] Final testing on release branch
-- [ ] Merge release branch to `main`
-- [ ] Tag the release: `vX.Y.Z`
-- [ ] Verify GitHub Actions release workflow completes
-- [ ] Verify container images published to GHCR
-- [ ] Verify binary assets attached to GitHub Release
-- [ ] Test installation from release artifacts
-- [ ] Update documentation site (if applicable)
+- [ ] Final CI pass on `main`
+- [ ] Create signed git tag: `git tag -s vX.Y.Z -m "Release vX.Y.Z"`
+- [ ] Push tag: `git push origin vX.Y.Z`
+- [ ] GitHub Actions workflow triggered successfully
+- [ ] Container images published and signed
+- [ ] Binary assets attached to GitHub Release
+- [ ] SBOM attached to release
+- [ ] Release notes published
+- [ ] Canary deployment initiated
 
 ### Post-Release
 
-- [ ] Merge release branch back to `develop`
-- [ ] Announce release (Discord, mailing list, blog)
-- [ ] Update deployment in staging environment
-- [ ] Monitor error rates and metrics for 24 hours
-- [ ] Close related issues and milestones
+- [ ] Monitor error rates for 24 hours
+- [ ] Update deployment in staging
+- [ ] Announce release
+- [ ] Close related issues/milestones
 
 ---
 
-## Release Procedure
+## Canary Deployment
 
-### Automated Release (Recommended)
+### Process
 
-1. **Prepare the release:**
+1. **Deploy to canary node (25% of cluster)**
    ```bash
-   git checkout develop
-   git pull origin develop
-   
-   # Update CHANGELOG.md
-   # Update version references if any
-   
-   git add CHANGELOG.md
-   git commit -m "chore: prepare release vX.Y.Z"
+   ./scripts/canary-deploy.sh --image ghcr.io/maddydevel/hivestack:v${NEW_VERSION} \
+     --version ${NEW_VERSION} \
+     --percentage 25
    ```
 
-2. **Create and push tag:**
+2. **Observe for 30 minutes**
+   - Monitor error rates (< 0.1% threshold)
+   - Monitor API latency (p99 < 500ms)
+   - Monitor resource usage (CPU < 80%, Memory < 85%)
+   - Check logs for unexpected errors
+
+3. **Full rollout** (if canary passes)
    ```bash
-   git checkout main
-   git merge develop
-   git tag -a vX.Y.Z -m "Release vX.Y.Z"
-   git push origin main --tags
+   ./scripts/canary-deploy.sh --image ghcr.io/maddydevel/hivestack:v${NEW_VERSION} \
+     --version ${NEW_VERSION} \
+     --percentage 100
    ```
 
-3. **GitHub Actions automatically:**
-   - Runs all tests
-   - Builds binaries for all platforms
-   - Builds and pushes container images
-   - Creates GitHub Release with artifacts
-   - Generates changelog from commits
+4. **Post-deployment verification**
+   ```bash
+   ./scripts/health-check.sh --verbose
+   ```
 
-### Manual Release (Emergency)
+### Monitoring Metrics
 
-If GitHub Actions is unavailable:
-
-```bash
-# Build locally
-make build VERSION=X.Y.Z
-
-# Build container image
-docker build -t hivestack:vX.Y.Z \
-  --build-arg VERSION=X.Y.Z \
-  --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
-  -f appliance/Dockerfile .
-
-# Push to registry
-docker tag hivestack:vX.Y.Z ghcr.io/maddydevel/hivestack:vX.Y.Z
-docker push ghcr.io/maddydevel/hivestack:vX.Y.Z
-
-# Create GitHub Release
-gh release create vX.Y.Z \
-  --title "HiveStack vX.Y.Z" \
-  --notes-file RELEASE_NOTES.md \
-  dist/*.tar.gz
-```
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| Error Rate | > 0.1% | > 1% |
+| API Latency (p99) | > 200ms | > 500ms |
+| CPU Usage | > 70% | > 90% |
+| Memory Usage | > 80% | > 95% |
+| Disk Usage | > 75% | > 90% |
+| VM Error Count | > 0 | > 5 |
 
 ---
 
-## Hotfix Process
+## Rollback Criteria
 
-For critical production issues requiring immediate fix:
+### Automatic Rollback Triggers
 
-1. **Create hotfix branch from main tag:**
-   ```bash
-   git checkout -b hotfix/vX.Y.Z+1 vX.Y.Z
-   ```
+The following conditions will trigger automatic rollback:
 
-2. **Apply the fix:**
-   ```bash
-   # Make minimal changes to fix the issue
-   git commit -m "fix: [description of fix]"
-   ```
+| Condition | Threshold | Duration | Action |
+|-----------|-----------|----------|--------|
+| Health check failure | HTTP != 200 | > 5 minutes | Immediate rollback |
+| Error rate spike | > 5% | > 10 minutes | Immediate rollback |
+| API latency spike | p99 > 2000ms | > 15 minutes | Immediate rollback |
+| Service crash loop | 3 restarts | < 5 minutes | Immediate rollback |
+| Data corruption | Any | Any | Immediate rollback |
+| Certificate expiry | Any | Any | Immediate rollback |
 
-3. **Test and release:**
-   ```bash
-   go test ./...
-   git tag -a vX.Y.Z+1 -m "Hotfix vX.Y.Z+1"
-   git push origin hotfix/vX.Y.Z+1 --tags
-   ```
+### Manual Rollback Decision
 
-4. **Merge back:**
-   ```bash
-   git checkout main
-   git merge hotfix/vX.Y.Z+1
-   git checkout develop
-   git merge hotfix/vX.Y.Z+1
-   git branch -d hotfix/vX.Y.Z+1
-   ```
+Evaluate rollback when:
 
----
+- Feature causes customer-reported issues
+- Performance regression > 20% from baseline
+- Critical bug discovered post-release
+- Security vulnerability in released version
+- Migration failure rate > 5%
 
-## Rollback Procedure
-
-If a release causes issues in production:
-
-### Container Rollback
+### Rollback Execution
 
 ```bash
-# Rollback to previous version
-docker pull ghcr.io/maddydevel/hivestack:vX.Y.Z-1
-docker stop hivestack-manager
-docker run -d --name hivestack-manager \
-  -p 8080:8080 -p 8443:8443 \
-  ghcr.io/maddydevel/hivestack:vX.Y.Z-1 manager
+# Quick rollback to previous version
+./scripts/rollback.sh --force
+
+# Rollback to specific version
+./scripts/rollback.sh v1.1.0 --force
+
+# Rollback without health check (for partial recovery)
+./scripts/rollback.sh --no-health-check --force
 ```
 
-### Binary Rollback
+### Rollback Verification
 
-```bash
-# Download previous release
-wget https://github.com/maddydevel/HiveStack/releases/download/vX.Y.Z-1/hivestack-vX.Y.Z-1-linux-amd64.tar.gz
-
-# Extract and install
-tar xzf hivestack-vX.Y.Z-1-linux-amd64.tar.gz
-sudo cp hive-manager /usr/bin/
-sudo systemctl restart hivestack-manager
-```
-
-### Database Rollback
-
-If database migrations were applied:
-
-```bash
-# Check current migration version
-psql -U hivestack -d hivestack -c "SELECT * FROM schema_migrations ORDER BY version DESC LIMIT 5;"
-
-# Rollback specific migration (if down migration exists)
-psql -U hivestack -d hivestack -f internal/db/migrations/XXXX_rollback.sql
-```
+After rollback:
+1. Health checks pass within 5 minutes
+2. Error rates return to baseline
+3. No data loss confirmed
+4. Previous functionality restored
+5. Incident documented in post-mortem
 
 ---
 
 ## Post-Release Verification
 
-After deploying a release, verify:
+### Immediate (within 1 hour)
 
-1. **Health checks pass:**
-   ```bash
-   curl -k https://localhost:8443/api/v1/health
-   ```
+```bash
+# Verify all services healthy
+./scripts/health-check.sh --verbose
 
-2. **All services running:**
-   ```bash
-   sudo systemctl status hivestack-manager
-   sudo systemctl status hivestack-node
-   ```
+# Check systemd service status
+sudo systemctl status hivestack-manager
+sudo systemctl status hivestack-node
 
-3. **No errors in logs:**
-   ```bash
-   sudo journalctl -u hivestack-manager --since "5 minutes ago" | grep -i error
-   ```
+# Verify version
+hive version
+```
 
-4. **Metrics normal:**
-   - CPU/Memory usage within expected range
-   - API response times normal
-   - No spike in error rates
+### 24-Hour Monitoring
 
-5. **Key workflows functional:**
-   - User login
-   - VM list/create
-   - Node status reporting
+- Monitor dashboards for anomalies
+- Check alert channels for false positives
+- Review error logs for new patterns
+- Confirm backup success
+
+### Post-Mortem
+
+For any issues discovered post-release:
+
+1. Document the issue and impact
+2. Identify root cause
+3. Apply preventive measures
+4. Update runbooks if needed
+5. Communicate resolution to stakeholders

@@ -1,0 +1,38 @@
+apiVersion: v2
+name: hivestack
+description: HiveStack - VM Management Platform for HANA Workloads
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/maddydevel/HiveStack
+icon: https://raw.githubusercontent.com/maddydevel/HiveStack/main/docs/logo.png
+sources:
+  - https://github.com/maddydevel/HiveStack
+maintainers:
+  - name: HiveStack Team
+    email: <EMAIL>
+keywords:
+  - hana
+  - vm-management
+  - virtualization
+  - kvm
+  - hpc
+
+# Version tracking rules:
+# - appVersion MUST match the git tag version (without 'v' prefix)
+# - version follows chart-specific SemVer (bumped on chart-only changes)
+# - Both versions MUST be updated in lockstep for application releases
+
+dependencies:
+  - name: postgresql
+    version: "15.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+
+annotations:
+  category: Infrastructure
+  licenses: Apache-2.0

@@ -221,6 +221,49 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Generate release notes (gh-release-notes)
+        id: release-notes
+        run: |
+          # Try gh-release-notes extension if available
+          if gh extension list 2>/dev/null | grep -q "release-notes"; then
+            gh release-notes ${{ github.ref_name }} > DETAILED_NOTES.md 2>/dev/null || true
+          fi
+          
+          # Always create a comprehensive notes file
+          if [ ! -f DETAILED_NOTES.md ]; then
+            echo "## HiveStack ${{ env.TAG_VERSION }}" > DETAILED_NOTES.md
+            echo "" >> DETAILED_NOTES.md
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              echo "### Changes since ${LAST_TAG}" >> DETAILED_NOTES.md
+              echo "" >> DETAILED_NOTES.md
+              git log --no-decorate ${LAST_TAG}..HEAD --format='- %s (%h)' >> DETAILED_NOTES.md
+            else
+              echo "### Changes" >> DETAILED_NOTES.md
+              echo "" >> DETAILED_NOTES.md
+              git log --no-decorate --format='- %s (%h)' >> DETAILED_NOTES.md
+            fi
+          fi
+          
+          echo "DETAILED_NOTES<<EOF" >> $GITHUB_OUTPUT
+          cat DETAILED_NOTES.md >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Install cosign (for tag signing)
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign git tag with cosign
+        run: |
+          # Create tag object hash and sign it
+          TAG_SHA=$(git rev-parse ${{ github.ref_name }}^{})
+          echo "${TAG_SHA}" > tag-sha.txt
+          cosign sign-blob --yes \
+            --output-signature "hivestack-${{ env.TAG_VERSION }}-tag.sig" \
+            --output-certificate "hivestack-${{ env.TAG_VERSION }}-tag.cert" \
+            tag-sha.txt
+          echo "Tag signed with cosign keyless signing"
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -229,8 +272,7 @@ jobs:
           body: |
             ## HiveStack ${{ env.TAG_VERSION }}
 
-            ### What's Changed
-            ${{ steps.changelog.outputs.CHANGELOG }}
+            ${{ steps.release-notes.outputs.DETAILED_NOTES }}
 
             ### Container Images
             - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG_VERSION }}`
@@ -276,3 +318,5 @@ jobs:
             release-artifacts/**/*.tar.gz.sigstore.json
             hivestack-${{ env.TAG_VERSION }}.spdx.json
             hivestack-${{ env.TAG_VERSION }}.spdx.json.sigstore.json
+            hivestack-${{ env.TAG_VERSION }}-tag.sig
+            hivestack-${{ env.TAG_VERSION }}-tag.cert

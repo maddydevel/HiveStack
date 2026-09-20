@@ -134,7 +134,9 @@ func TestGenerateDomainXML_Devices(t *testing.T) {
 	if d.Devices.Video.Model.Type != "qxl" {
 		t.Errorf("video model = %q, want qxl", d.Devices.Video.Model.Type)
 	}
-	if d.Devices.Memballoon.Model != "virtio" {
+	if d.Devices.Memballoon == nil {
+		// Ballooning disabled — expected for HANA compliance
+	} else if d.Devices.Memballoon.Model != "virtio" {
 		t.Errorf("memballoon model = %q, want virtio", d.Devices.Memballoon.Model)
 	}
 }
