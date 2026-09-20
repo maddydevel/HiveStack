@@ -746,6 +746,78 @@ func (s *ComplianceStore) VerifyChain(ctx context.Context, vmID string) (bool, e
     return true, nil
 }
 
+// TamperDetail describes a detected break in the evidence hash chain.
+type TamperDetail struct {
+    RecordIndex    int    `json:"record_index"`     // index in chain where break occurs
+    RecordID       string `json:"record_id"`        // the evidence row ID with bad previous_hash
+    ExpectedHash   string `json:"expected_hash"`    // what previous_hash should be (prior row's hash)
+    ActualHash     string `json:"actual_hash"`      // the corrupted previous_hash value
+    PriorRecordID  string `json:"prior_record_id"`  // the ID of the preceding record
+}
+
+// EvidenceChainVerificationResult holds the outcome of VerifyEvidenceChain.
+type EvidenceChainVerificationResult struct {
+    VMID         string          `json:"vm_id"`
+    Valid        bool            `json:"valid"`
+    ChainLength  int             `json:"chain_length"`
+    TamperDetail *TamperDetail   `json:"tamper_detail,omitempty"`
+}
+
+// VerifyEvidenceChain performs detailed hash-chain verification for a VM's
+// compliance evidence. Unlike VerifyChain (which returns a bool), this function
+// returns detailed tamper information including which record index is broken,
+// the expected hash vs the actual (tampered) hash, and the IDs involved.
+func (s *ComplianceStore) VerifyEvidenceChain(ctx context.Context, vmID string) (*EvidenceChainVerificationResult, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    evidence, err := s.GetEvidence(ctx, "", vmID)
+    if err != nil {
+        return nil, fmt.Errorf("get evidence for chain verification: %w", err)
+    }
+
+    result := &EvidenceChainVerificationResult{
+        VMID:        vmID,
+        Valid:       true,
+        ChainLength: len(evidence),
+    }
+
+    if len(evidence) == 0 {
+        return result, nil
+    }
+
+    for i := 1; i < len(evidence); i++ {
+        prev := evidence[i-1]
+        curr := evidence[i]
+
+        if curr.PreviousHash != prev.Hash {
+            result.Valid = false
+            result.TamperDetail = &TamperDetail{
+                RecordIndex:   i,
+                RecordID:      curr.ID,
+                ExpectedHash:  prev.Hash,
+                ActualHash:    curr.PreviousHash,
+                PriorRecordID: prev.ID,
+            }
+            return result, nil
+        }
+    }
+
+    return result, nil
+}
+
+// InsertRawEvidence inserts a compliance evidence record with explicit hashes.
+// This is intended for testing scenarios (e.g., simulating tampered records)
+// where the caller needs full control over previous_hash and hash values.
+func (s *ComplianceStore) InsertRawEvidence(ctx context.Context, tenantID, vmID, checkType string,
+    passed bool, evidence []byte, previousHash, hash string, createdAt time.Time) error {
+    _, err := s.db.ExecContext(ctx, `
+        INSERT INTO compliance_evidence (tenant_id, vm_id, check_type, check_result, passed, evidence, previous_hash, hash, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, tenantID, vmID, checkType, []byte("{}"), passed, evidence, previousHash, hash, createdAt)
+    return err
+}
+
 func boolToInt(b bool) int {
     if b {
         return 1
