@@ -82,7 +82,7 @@ Run `./bin/hive --help` for full command reference.
 |-----------|------------|
 | Manager backend | Go 1.26 |
 | CLI | Go, cobra |
-| Web UI (planned) | React 18 + TypeScript + Vite + Tailwind CSS |
+| Web UI | ✅ | React 18 + TypeScript + Vite + Tailwind CSS |
 | Database | PostgreSQL (pgx/v5 driver) |
 | Virtualization | KVM + QEMU + libvirt |
 | Node agent | Go, gRPC |
