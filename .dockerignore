@@ -1,0 +1,41 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Build output
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.out
+sbom.json
+
+# Go workspace and vendor caches
+go.work
+go.work.sum
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Editor and OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Documentation and repo metadata not needed in images
+docs/
+*.md
+CODEOWNERS
+LICENSE
+
+# CI and local tooling
+.github/
+Dockerfile*
+docker-compose*.yml

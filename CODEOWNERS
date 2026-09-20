@@ -1,0 +1,11 @@
+# HiveStack CODEOWNERS
+# Global owner for all files
+* @maddydevel
+
+# Critical paths
+/internal/auth/ @maddydevel
+/internal/security/ @maddydevel
+/internal/db/ @maddydevel
+/cmd/ @maddydevel
+/docs/ @maddydevel
+/web/ @maddydevel
