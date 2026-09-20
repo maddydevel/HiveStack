@@ -220,3 +220,163 @@ This threat model applies to the HiveStack control plane, including:
 | Thread Safety | ✅ Implemented | Mutex protection throughout |
 | Resource Limits | ⚠️ Partial | Upload limits, no connection limits |
 | Dependency Scanning | ❌ Not implemented | Add go vulncheck to CI |
+
+---
+
+## Threats (HiveStack v1 Architecture — 2026-09-20)
+
+### 1. Authentication Bypass
+
+**Description:** An attacker spoofs or forges credentials to gain unauthorized access to the Manager REST API, gRPC endpoints, or the database.
+
+**STRIDE:** Spoofing, Elevation of Privilege
+
+**Attack Vectors:**
+1. JWT token forgery — weak or predictable JWT secret allows minting valid tokens
+2. Stolen JWT — exfiltration via XSS, logs, or network interception
+3. Default/weak credentials — bootstrap admin password not rotated after `hive-manager init`
+4. TLS misconfiguration — mutual TLS bypass on gRPC if CA verification disabled
+5. Database credential leak — DSN with embedded password in config or env var
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| 256-bit random JWT secret generated at init | `internal/auth/auth.go` | ✅ |
+| Short-lived JWT tokens (15 min), refresh rotation | `internal/auth/` | ✅ |
+| mTLS enforced on all gRPC channels | `internal/tls/grpc.go` | ✅ |
+| Argon2id password hashing | `internal/auth/auth.go` | ✅ |
+| TLS 1.2+ required for REST API | `internal/api/tls.go` | ✅ |
+| Database DSN loaded from secrets manager | `internal/config/` | ✅ |
+| Bootstrap admin password auto-generated | `cmd/hive-manager/main.go` | ✅ |
+
+---
+
+### 2. Tenant Isolation Failure
+
+**Description:** A user from Tenant A accesses or modifies resources belonging to Tenant B (VMs, storage, networks, backups).
+
+**STRIDE:** Information Disclosure, Tampering, Elevation of Privilege
+
+**Attack Vectors:**
+1. IDOR — API endpoint accepts UUID without verifying tenant ownership
+2. SQL injection — missing tenant_id filter
+3. Shared libvirt connection — VM operations not scoped by tenant
+4. Shared filesystem paths — disk images accessible across tenants
+5. gRPC command injection — Manager sends command to wrong node/tenant context
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| All queries include tenant_id filter at repository layer | `internal/db/repositories.go` | ✅ |
+| Row-Level Security (RLS) in PostgreSQL | `internal/db/schema.sql` | ✅ |
+| Tenant context from JWT, validated in middleware | `internal/security/middleware.go` | ✅ |
+| UUID-based resource identifiers | `internal/db/ids.go` | ✅ |
+| Per-tenant libvirt storage pools | `internal/libvirt/domain.go` | ✅ |
+| Per-tenant network bridges | `internal/` | 🔄 Planned |
+| Audit log records tenant_id with mutations | `internal/security/audit.go` | ✅ |
+
+---
+
+### 3. Libvirt XML Injection
+
+**Description:** An attacker injects malicious XML into libvirt domain definitions, leading to arbitrary command execution on the hypervisor or VM escape.
+
+**STRIDE:** Tampering, Elevation of Privilege
+
+**Attack Vectors:**
+1. Malicious `<commandline>` in QEMU — injecting `-sandbox off` or arbitrary args
+2. Host device passthrough — crafted `<hostdev>` granting PCI device access
+3. Emulator override — replacing qemu binary path with attacker-controlled binary
+4. `<filesystem>` mount injection — mounting host directories into VM
+5. Network filter manipulation — bypassing firewall rules via crafted `<filterref>`
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| Domain XML built from validated Go structs, not string concat | `internal/libvirt/domain.go` | ✅ |
+| Strict XML schema validation before libvirt submission | `internal/libvirt/` | ✅ |
+| QEMU sandbox enabled (`-sandbox on`) | `internal/libvirt/domain.go` | ✅ |
+| AppArmor profiles restrict libvirt-qemu | `internal/security/apparmor.go` | ✅ |
+| Emulator path hardcoded, not user-configurable | `internal/libvirt/domain.go` | ✅ |
+| Host passthrough restricted to approved PCI addresses | `internal/libvirt/domain.go` | 🔄 Planned |
+| SELinux/sVirt enforcement per VM | `internal/security/` | 🔄 Planned |
+
+---
+
+### 4. gRPC Man-in-the-Middle (MITM)
+
+**Description:** An attacker intercepts or modifies gRPC traffic between Manager and Node Agent.
+
+**STRIDE:** Spoofing, Tampering, Information Disclosure
+
+**Attack Vectors:**
+1. Downgrade attack — forcing plaintext if TLS optional
+2. Certificate spoofing — presenting forged cert if CA pinning absent
+3. DNS hijacking — redirecting Manager to rogue Node Agent
+4. ARP spoofing — intercepting gRPC on shared L2 network
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| Mutual TLS with HiveStack internal CA | `internal/tls/grpc.go` | ✅ |
+| Manager verifies Node cert signed by internal CA | `internal/tls/` | ✅ |
+| TLS 1.3 preferred, TLS 1.2 minimum | `internal/tls/` | ✅ |
+| Certificate rotation via SCEP or manual script | `scripts/gen-certs.sh` | ✅ |
+| Network segmentation (management VLAN) | Deployment | 📋 Recommended |
+| Certificate Transparency / audit for cert issuance | `internal/security/audit.go` | 🔄 Planned |
+
+---
+
+### 5. Privilege Escalation
+
+**Description:** A low-privileged user escalates to tenant admin, another tenant, or root on the Manager host.
+
+**STRIDE:** Elevation of Privilege
+
+**Attack Vectors:**
+1. RBAC bypass — API endpoint missing role check
+2. Container escape — privileged container or mounted host paths
+3. Symlink/race condition in VM image uploads — overwriting host files
+4. SUID binaries on Manager host exploited
+5. Manager process running as root — full host compromise
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| RBAC enforced in middleware for every API route | `internal/auth/rbac.go` | ✅ |
+| Manager runs as non-root user (`hivestack`) | `Dockerfile` | ✅ |
+| No SUID binaries in container image | `Dockerfile` | ✅ |
+| Read-only root filesystem with tmpfs for /run | Deployment | 📋 Recommended |
+| Seccomp profile restricting syscalls | `docker run --security-opt` | 📋 Recommended |
+| Only NET_BIND_SERVICE capability if needed | `Dockerfile` | ✅ |
+| VM image uploads validated (format, size, magic bytes) | `internal/api/ovf.go` | ✅ |
+
+---
+
+### 6. Secrets Exposure
+
+**Description:** Sensitive data (passwords, JWT secrets, TLS keys, DB credentials, SOPS keys) leaked to unauthorized parties.
+
+**STRIDE:** Information Disclosure
+
+**Attack Vectors:**
+1. Hardcoded credentials committed to Git
+2. Secrets in logs — JWT tokens, passwords, DSN logged in errors
+3. Environment variable leak — `/proc/<pid>/environ` readable by same-user processes
+4. Config file permissions — `manager.yaml` world-readable
+5. Secrets in container image layers — `.env` copied into image
+6. Unencrypted database backups
+7. Memory dumps — secrets readable from core dumps or `/proc/<pid>/mem`
+
+**Mitigations:**
+| Mitigation | Component | Status |
+|---|---|---|
+| Secrets via HashiCorp Vault or SOPS | `internal/secrets/vault.go`, `internal/secrets/sops.go` | ✅ |
+| `.env` in `.dockerignore` and `.gitignore` | `.dockerignore` | ✅ |
+| Config files readable only by hivestack user (0600) | `Dockerfile` | ✅ |
+| Secrets never logged; redacted in errors | `internal/security/audit.go` | ✅ |
+| LUKS-encrypted storage for VM images and backups | `internal/security/luks.go` | ✅ |
+| Database backups encrypted at rest | Deployment | 📋 Recommended |
+| `mlock` for sensitive buffers | `internal/secrets/` | 🔄 Planned |
+| SOPS-encrypted secrets in Git for GitOps | `internal/secrets/sops.go` | ✅ |
+| `.pem`, `.key`, `.crt` excluded from Docker builds | `.dockerignore` | ✅ |

@@ -1,39 +1,268 @@
 version: "2"
 run:
   timeout: 5m
+  go: "1.23"
 
 linters:
   enable:
-    - staticcheck
-    - ineffassign
-    - govet
-    - unused
     - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gocyclo
+    - gosec
+    - gofmt
+    - misspell
+    - revive
+    - ineffassign
+    - bodyclose
+    - dogsled
+    - dupl
+    - funlen
+    - goconst
+    - gocritic
+    - gomnd
+    - lll
+    - nestif
+    - nlreturn
+    - unparam
+    - whitespace
+    - wsl
 
 linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - (io.ReadCloser).Close
+      - (io.Writer).Write
+      - (net.Conn).Close
+      - (net.Listener).Close
+      - (*net/http.Client).CloseIdleConnections
+      - (*net/http.Response).Body.Close
+      - (*os.File).Close
+      - (*sync.Mutex).Lock
+      - (*sync.Mutex).Unlock
+      - (*sync.RWMutex).Lock
+      - (*sync.RWMutex).Unlock
+      - (*sync.RWMutex).RLock
+      - (*sync.RWMutex).RUnlock
+      - (*sync.WaitGroup).Add
+      - (*sync.WaitGroup).Done
+      - (*sync.WaitGroup).Wait
+      - (hash.Hash).Write
+      - (io.Reader).Read
+      - (io.ReadWriteCloser).Close
+      - (io.ReadWriteCloser).Read
+      - (io.ReadWriteCloser).Write
+      - (io.ReadWriteSeeker).Read
+      - (io.ReadWriteSeeker).Seek
+      - (io.ReadWriteSeeker).Write
+      - (io.ReadSeeker).Read
+      - (io.ReadSeeker).Seek
+      - (io.WriteCloser).Close
+      - (io.WriteCloser).Write
+      - (io.WriterAt).WriteAt
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+      - log.Fatal
+      - log.Fatalf
+      - log Fatalln
+      - log.Panic
+      - log.Panicf
+      - log.Panicln
+      - net/http.Error
+      - net/http.SetCookie
+      - os.Stderr.Close
+      - os.Stdin.Close
+      - os.Stdout.Close
+      - strings.Builder.WriteString
+      - strings.Builder.WriteByte
+      - strings.Builder.WriteRune
+      - (net/http.ResponseWriter).Write
   govet:
     enable:
-      - autowidth
-      - bool
+      - appends
+      - asmdecl
+      - assign
+      - atomic
+      - bools
+      - buildtag
       - composites
       - copylocks
       - defers
       - directive
       - errorsas
-      - fatifalse
+      - framepointer
+      - httpresponse
+      - ifaceassert
       - loopclosure
       - lostcancel
       - nilfunc
       - printf
       - shift
+      - sigchanyzer
+      - slog
       - stdmethods
+      - stringintconv
       - structtag
       - testinggoroutine
       - tests
+      - timeformat
       - unreachable
       - unsafeptr
       - unusedresult
+  staticcheck:
+    checks: ["all"]
+  gocyclo:
+    min-complexity: 15
+  gosec:
+    includes:
+      - G101 # Look for hard coded credentials
+      - G102 # Bind to all interfaces
+      - G103 # Audit the use of unsafe block
+      - G104 # Audit errors not checked
+      - G106 # Audit the use of ssh.InsecureIgnoreHostKey
+      - G107 # Url provided to HTTP request as taint input
+      - G108 # Profiling endpoint automatically exposed on /debug/pprof
+      - G109 # Potential Integer overflow made by strconv.Atoi result conversion
+      - G110 # Potential DoS vulnerability via decompression bomb
+      - G111 # Potential Slowloris Attack
+      - G112 # Potential slowloris attack
+      - G114 # Use of net/http serve function that has no support for setting timeouts
+      - G201 # SQL query construction using format string
+      - G202 # SQL query construction using string concatenation
+      - G203 # Use of unescaped data in HTML templates
+      - G301 # Poor file permissions used when creating a directory
+      - G302 # Poor file permissions used with chmod
+      - G303 # Creating tempfile using a predictable path
+      - G304 # File path provided as taint input
+      - G305 # File traversal when extracting zip/tar archive
+      - G306 # Poor file permissions used when writing to a file
+      - G307 # Poor file permissions used with os.Create
+      - G401 # Detect the usage of DES, RC4, MD5 or SHA1
+      - G402 # Look for bad TLS connection settings
+      - G403 # Ensure minimum RSA key length of 2048 bits
+      - G404 # Insecure random number source (rand)
+      - G501 # Import blocklist: crypto/md5
+      - G502 # Import blocklist: crypto/des
+      - G503 # Import blocklist: crypto/rc4
+      - G504 # Import blocklist: net/http/cgi
+      - G505 # Import blocklist: crypto/sha1
+      - G601 # Implicit memory aliasing in for loop
+      - G602 # Slice access out of bounds
+    excludes:
+      - G115 # Potential integer overflow when converting between integer types
+  gofmt:
+    simplify: true
+  misspell:
+    locale: US
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unreachable-code
+      - name: redefines-builtin-id
+      - name: unnecessary-stmt
+      - name: struct-tag
+      - name: modifies-value-receiver
+      - name: constant-logical-expr
+      - name: bool-literal-in-expr
+      - name: duplicated-imports
+      - name: early-return
+      - name: defer
+      - name: identical-branches
+      - name: optimize-operands-order
+  lll:
+    line-length: 120
+    tab-width: 4
+  funlen:
+    lines: 100
+    statements: 50
+  nestif:
+    min-complexity: 5
+  dupl:
+    threshold: 150
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  gomnd:
+    ignored-functions: 'os.OpenFile,os.MkdirAll,os.WriteFile,strconv.ParseInt,strconv.ParseUint,strconv.Atoi'
+  unparam:
+    check-exported: true
+  whitespace:
+    multi-if: true
+    multi-func: true
+  wsl:
+    strict-append: true
+    allow-assign-and-call: true
+    allow-multiline-assign: true
+    allow-cuddle-declarations: false
+    allow-trailing-comment: false
+    force-case-trailing-whitespace: 0
+    force-err-cuddling: true
+    allow-separated-leading-comment: true
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-use-default: false
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - funlen
+        - gocyclo
+        - dupl
+        - lll
+        - goconst
+        - gomnd
+        - unparam
+        - wsl
+        - nlreturn
+        - errcheck
+    - path: cmd/
+      linters:
+        - gocyclo
+        - funlen
+    - path: internal/db/migrations/
+      linters:
+        - all
+    - linters:
+        - gosec
+      text: "G101" # Allow hardcoded credentials in test files
+      path: _test\.go
+    - linters:
+        - gosec
+      text: "G304" # Allow file path in tests
+      path: _test\.go
+    - linters:
+        - gosec
+      text: "G201" # Allow SQL in tests
+      path: _test\.go
+    - linters:
+        - revive
+      text: "var-naming" # Allow short variable names in tests
+      path: _test\.go
+    - linters:
+        - lll
+      source: "^//go:generate "

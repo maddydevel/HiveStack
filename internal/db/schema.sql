@@ -358,3 +358,63 @@ CREATE TABLE events (
 CREATE INDEX idx_events_tenant_id ON events(tenant_id, created_at DESC);
 CREATE INDEX idx_events_type ON events(type);
 
+
+-- ============================================================
+-- 0007_soft_delete.sql
+-- ============================================================
+ALTER TABLE users ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_users_not_deleted ON users(tenant_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE vms ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_vms_not_deleted ON vms(tenant_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE hosts ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_hosts_not_deleted ON hosts(tenant_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE storage_pools ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_storage_pools_not_deleted ON storage_pools(tenant_id) WHERE deleted_at IS NULL;
+
+ALTER TABLE networks ADD COLUMN deleted_at TIMESTAMPTZ;
+CREATE INDEX idx_networks_not_deleted ON networks(tenant_id) WHERE deleted_at IS NULL;
+
+-- ============================================================
+-- 0008_chain_verification.sql
+-- ============================================================
+CREATE OR REPLACE FUNCTION verify_compliance_evidence_chain(
+    p_vm_id     TEXT DEFAULT NULL,
+    p_tenant_id TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+    vm_id                  TEXT,
+    evidence_id            TEXT,
+    evidence_created_at    TIMESTAMPTZ,
+    expected_previous_hash TEXT,
+    actual_previous_hash   TEXT
+)
+LANGUAGE sql STABLE AS $$
+    SELECT l.vm_id, l.id, l.created_at, l.prior_hash, l.previous_hash
+    FROM (
+        SELECT ce.vm_id, ce.id, ce.created_at, ce.previous_hash,
+               lag(ce.hash) OVER (
+                   PARTITION BY ce.vm_id ORDER BY ce.created_at, ce.id
+               ) AS prior_hash
+        FROM compliance_evidence ce
+        WHERE (p_vm_id IS NULL OR ce.vm_id = p_vm_id)
+          AND (p_tenant_id IS NULL OR ce.tenant_id = p_tenant_id)
+    ) l
+    WHERE l.prior_hash IS NOT NULL
+      AND l.previous_hash <> l.prior_hash
+    ORDER BY l.vm_id, l.created_at, l.id;
+$$;
+
+-- Convenience wrapper: true when no broken links exist (an empty chain is valid).
+CREATE OR REPLACE FUNCTION is_compliance_evidence_chain_valid(
+    p_vm_id     TEXT DEFAULT NULL,
+    p_tenant_id TEXT DEFAULT NULL
+)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+    SELECT NOT EXISTS (
+        SELECT 1 FROM verify_compliance_evidence_chain(p_vm_id, p_tenant_id)
+    );
+$$;
