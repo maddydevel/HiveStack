@@ -96,8 +96,8 @@ func TestHashPassword_ParseHashComponents(t *testing.T) {
 	if !strings.Contains(hash, "m=65536,") {
 		t.Fatal("missing memory param")
 	}
-	if !strings.Contains(hash, "t=1,") {
-		t.Fatal("missing time param")
+	if !strings.Contains(hash, "t=3,") {
+		t.Fatal("missing time param (t=3)")
 	}
 	if !strings.Contains(hash, "p=4$") {
 		t.Fatal("missing parallelism param")
@@ -219,9 +219,127 @@ func TestDefaultExpiry(t *testing.T) {
     }
 }
 
+func TestGenerateTokenPair(t *testing.T) {
+	os.Setenv("HIVESTACK_JWT_SECRET", "test-secret-key-12345")
+	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
+
+	accessToken, refreshToken, err := GenerateTokenPair("user-1", "tenant-1", []string{"vm.list", "vm.create"})
+	if err != nil {
+		t.Fatalf("GenerateTokenPair: %v", err)
+	}
+	if accessToken == "" {
+		t.Fatal("empty access token")
+	}
+	if refreshToken == "" {
+		t.Fatal("empty refresh token")
+	}
+
+	// Validate access token
+	claims, err := ValidateToken(accessToken)
+	if err != nil {
+		t.Fatalf("ValidateToken(access): %v", err)
+	}
+	if claims.UserID != "user-1" {
+		t.Errorf("UserID = %q, want user-1", claims.UserID)
+	}
+	if claims.TenantID != "tenant-1" {
+		t.Errorf("TenantID = %q, want tenant-1", claims.TenantID)
+	}
+	if len(claims.Scopes) != 2 {
+		t.Fatalf("expected 2 scopes, got %d", len(claims.Scopes))
+	}
+
+	// Validate refresh token
+	newToken, rtClaims, err := ValidateRefreshToken(refreshToken)
+	if err != nil {
+		t.Fatalf("ValidateRefreshToken: %v", err)
+	}
+	if rtClaims.UserID != "user-1" {
+		t.Errorf("refresh UserID = %q, want user-1", rtClaims.UserID)
+	}
+	if rtClaims.TenantID != "tenant-1" {
+		t.Errorf("refresh TenantID = %q, want tenant-1", rtClaims.TenantID)
+	}
+	if newToken == "" {
+		t.Fatal("expected new refresh token after rotation")
+	}
+	if newToken == refreshToken {
+		t.Fatal("expected rotated token to differ from original")
+	}
+}
+
+func TestValidateRefreshToken_InvalidToken(t *testing.T) {
+	_, _, err := ValidateRefreshToken("invalid-token")
+	if err == nil {
+		t.Fatal("expected error for invalid refresh token")
+	}
+}
+
+func TestValidateRefreshToken_EmptyToken(t *testing.T) {
+	_, _, err := ValidateRefreshToken("")
+	if err == nil {
+		t.Fatal("expected error for empty refresh token")
+	}
+}
+
+func TestValidateRefreshToken_Rotation(t *testing.T) {
+	os.Setenv("HIVESTACK_JWT_SECRET", "test-secret")
+	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
+
+	// Generate a token
+	_, refreshToken, err := GenerateTokenPair("user-2", "tenant-2", []string{"read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First validation should succeed and rotate
+	newToken, _, err := ValidateRefreshToken(refreshToken)
+	if err != nil {
+		t.Fatalf("first validation: %v", err)
+	}
+
+	// Second validation with old token should fail (already rotated)
+	_, _, err = ValidateRefreshToken(refreshToken)
+	if err == nil {
+		t.Fatal("expected error for reused (rotated) refresh token")
+	}
+
+	// New token should work
+	_, _, err = ValidateRefreshToken(newToken)
+	if err != nil {
+		t.Fatalf("new token validation: %v", err)
+	}
+}
+
+func TestGenerateRefreshToken_Unique(t *testing.T) {
+	t1, err := GenerateRefreshToken("u", "t", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2, err := GenerateRefreshToken("u", "t", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if t1 == t2 {
+		t.Fatal("expected different refresh tokens")
+	}
+}
+
+func TestClaimsStruct_WithRefreshToken(t *testing.T) {
+	claims := &Claims{
+		UserID:       "u1",
+		TenantID:     "t1",
+		Scopes:       []string{"read"},
+		RefreshToken: "some-refresh-token",
+	}
+	if claims.RefreshToken != "some-refresh-token" {
+		t.Errorf("RefreshToken = %q", claims.RefreshToken)
+	}
+}
+
 func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
+	if a < b {
+		return a
+	}
+	return b
 }

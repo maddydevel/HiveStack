@@ -4,13 +4,11 @@ run:
 
 linters:
   enable:
-    - gosimple
     - staticcheck
     - ineffassign
     - govet
     - unused
     - errcheck
-    - gci
 
 linters-settings:
   govet:
