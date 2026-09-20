@@ -824,3 +824,154 @@ func boolToInt(b bool) int {
     }
     return 0
 }
+
+// DriftCheckResult holds the result of a pure drift check.
+type DriftCheckResult struct {
+    DriftDetected bool                   `json:"drift_detected"`
+    DriftDetails  []DriftDetail          `json:"drift_details,omitempty"`
+    BaselineCheck string                 `json:"baseline_check,omitempty"`
+    Reason        string                 `json:"reason,omitempty"`
+}
+
+// DriftDetail describes a single field that drifted.
+type DriftDetail struct {
+    Field    string `json:"field"`
+    Expected interface{} `json:"expected"`
+    Actual   interface{} `json:"actual"`
+    Severity string `json:"severity"`
+}
+
+// CheckDriftPure compares a current profile against a stored baseline profile
+// and returns whether drift was detected. This is a pure function that does
+// not require a database — it operates on the profiles directly.
+func CheckDriftPure(baseline *VMProfile, current *VMProfile) DriftCheckResult {
+    result := DriftCheckResult{
+        DriftDetected: false,
+        DriftDetails:  []DriftDetail{},
+    }
+
+    if baseline == nil {
+        result.Reason = "no baseline profile — new baseline"
+        return result
+    }
+
+    if current == nil {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "profile",
+            Expected: "non-nil",
+            Actual:   "nil",
+            Severity: "error",
+        })
+        return result
+    }
+
+    // Compare fields
+    if current.CPUs != baseline.CPUs {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "cpus",
+            Expected: baseline.CPUs,
+            Actual:   current.CPUs,
+            Severity: "warning",
+        })
+    }
+    if current.MemoryBytes != baseline.MemoryBytes {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "memory_bytes",
+            Expected: baseline.MemoryBytes,
+            Actual:   current.MemoryBytes,
+            Severity: "warning",
+        })
+    }
+    if current.CPUAllocation != baseline.CPUAllocation {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "cpu_allocation",
+            Expected: baseline.CPUAllocation,
+            Actual:   current.CPUAllocation,
+            Severity: "error",
+        })
+    }
+    if current.HugepagesEnabled != baseline.HugepagesEnabled {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "hugepages_enabled",
+            Expected: baseline.HugepagesEnabled,
+            Actual:   current.HugepagesEnabled,
+            Severity: "error",
+        })
+    }
+    if current.BallooningAllowed != baseline.BallooningAllowed {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "ballooning_allowed",
+            Expected: baseline.BallooningAllowed,
+            Actual:   current.BallooningAllowed,
+            Severity: "error",
+        })
+    }
+    if current.SwapAllowed != baseline.SwapAllowed {
+        result.DriftDetected = true
+        result.DriftDetails = append(result.DriftDetails, DriftDetail{
+            Field:    "swap_allowed",
+            Expected: baseline.SwapAllowed,
+            Actual:   current.SwapAllowed,
+            Severity: "error",
+        })
+    }
+
+    if !result.DriftDetected {
+        result.Reason = "profile matches baseline"
+    }
+
+    return result
+}
+
+// VerifyChainPure verifies the hash chain integrity for a slice of evidence
+// records represented as simple structs. Returns detailed tamper information.
+func VerifyChainPure(records []EvidenceRecord) *EvidenceChainVerificationResult {
+    result := &EvidenceChainVerificationResult{
+        Valid:        true,
+        ChainLength:  len(records),
+    }
+
+    if len(records) == 0 {
+        return result
+    }
+
+    for i := 1; i < len(records); i++ {
+        prev := records[i-1]
+        curr := records[i]
+
+        if curr.PreviousHash != prev.CurrentHash {
+            result.Valid = false
+            result.TamperDetail = &TamperDetail{
+                RecordIndex:   i,
+                RecordID:      curr.CheckID,
+                ExpectedHash:  prev.CurrentHash,
+                ActualHash:    curr.PreviousHash,
+                PriorRecordID: prev.CheckID,
+            }
+            return result
+        }
+    }
+
+    return result
+}
+
+// ComputeRecordHash computes the hash for an evidence record given the
+// previous hash. This is the same logic used in GenerateEvidence.
+func ComputeRecordHash(previousHash string, profile *VMProfile, violations []Violation, passed bool, checkedBy string, timestamp time.Time) string {
+    profileJSON, _ := json.Marshal(profile)
+    recordData := fmt.Sprintf("%s%s%d%d%s%s",
+        previousHash,
+        string(profileJSON),
+        len(violations),
+        boolToInt(passed),
+        timestamp.Format(time.RFC3339),
+        checkedBy,
+    )
+    return ComputeHash([]byte(recordData))
+}
