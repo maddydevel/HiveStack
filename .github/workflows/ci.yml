@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.26"
-  GOLANGCI_VERSION: "v1.59"
+  GO_VERSION: "1.23"
+  GOLANGCI_VERSION: "v1.64"
 
 jobs:
   # ==========================================================================
@@ -226,6 +226,23 @@ jobs:
         with:
           file: api/openapi.yaml
 
+      - name: Checkout main branch spec
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: base
+          sparse-checkout: api
+          persist-credentials: false
+
+      - name: Check for breaking API changes
+        uses: oasdiff/oasdiff-action/breaking@v0.1.17
+        with:
+          base: base/api/openapi.yaml
+          revision: api/openapi.yaml
+          fail-on: ERR
+          review: false
+          github-token: ""
+
       - name: Install openapi-generator
         run: |
           wget -q https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/7.2.0/openapi-generator-cli-7.2.0.jar -O /tmp/openapi-generator.jar
@@ -291,3 +308,27 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+
+  # ==========================================================================
+  # Job 8: Generate SBOM
+  # ==========================================================================
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.json
+          upload-artifact: false
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 30

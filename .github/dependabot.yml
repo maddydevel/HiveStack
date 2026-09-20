@@ -7,8 +7,7 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "09:00"
       timezone: "Asia/Kolkata"
     open-pull-requests-limit: 10
@@ -65,3 +64,27 @@ updates:
           - "softprops/*"
           - "stoplightio/*"
           - "securego/*"
+          - "anchore/*"
+          - "oasdiff/*"
+          - "sigstore/*"
+          - "ossf/*"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "maddydevel"
+    assignees:
+      - "maddydevel"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"

@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   GO_VERSION: "1.26"
@@ -145,7 +146,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -158,6 +163,12 @@ jobs:
             VERSION=${{ env.TAG_VERSION }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
+
+      - name: Sign container image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
 
   # ==========================================================================
   # Job 4: Create GitHub Release with artifacts
@@ -174,6 +185,27 @@ jobs:
         with:
           path: release-artifacts
           pattern: release-*
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          path: .
+          format: spdx-json
+          output-file: hivestack-${{ env.TAG_VERSION }}.spdx.json
+          upload-artifact: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign release artifacts and SBOM
+        env:
+          TAG_VERSION: ${{ env.TAG_VERSION }}
+        run: |
+          find release-artifacts -name '*.tar.gz' -exec \
+            cosign sign-blob --yes --bundle '{}.sigstore.json' '{}' \;
+          cosign sign-blob --yes \
+            --bundle "hivestack-${TAG_VERSION}.spdx.json.sigstore.json" \
+            "hivestack-${TAG_VERSION}.spdx.json"
 
       - name: Generate changelog
         id: changelog
@@ -219,8 +251,28 @@ jobs:
             docker compose -f appliance/docker-compose.yaml up -d
             ```
 
+            ### Verification
+            Release artifacts and the SBOM are signed with keyless [cosign](https://docs.sigstore.dev/cosign/overview/) signatures.
+            ```bash
+            # Verify a downloaded artifact against its .sigstore.json bundle
+            cosign verify-blob \
+              --bundle hivestack-${{ env.TAG_VERSION }}-linux-amd64.tar.gz.sigstore.json \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ github.ref_name }}" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              hivestack-${{ env.TAG_VERSION }}-linux-amd64.tar.gz
+
+            # Verify the container image
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ github.ref_name }}" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.TAG_VERSION }}
+            ```
+
             See [docs/RELEASE.md](docs/RELEASE.md) for full release notes and upgrade instructions.
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: |
             release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.tar.gz.sigstore.json
+            hivestack-${{ env.TAG_VERSION }}.spdx.json
+            hivestack-${{ env.TAG_VERSION }}.spdx.json.sigstore.json
