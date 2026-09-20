@@ -569,7 +569,7 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate libvirt XML: %w", err)
 	}
-	log.Printf("VM libvirt XML for %s: %s", spec.Name, domainXML)
+	log.Printf("msg=%q vm=%s xml_bytes=%d", "libvirt domain XML generated", spec.Name, len(domainXML))
 
 	// Insert VM record
 	vm := &db.VM{

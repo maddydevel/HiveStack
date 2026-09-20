@@ -2,6 +2,7 @@ package auth
 
 import (
     "fmt"
+    "net/http"
     "strings"
 )
 
@@ -157,7 +158,35 @@ func (e *RBACEngine) CheckPermission(roleName, resource, action string) error {
     if e.HasPermission(roleName, resource, action) {
         return nil
     }
-    return fmt.Errorf("forbidden: role '%s' cannot %s on %s", roleName, action, resource)
+    return fmt.Errorf("%w: role '%s' cannot %s on %s", ErrForbidden, roleName, action, resource)
+}
+
+// defaultRBAC is the engine used by RequirePermission.
+var defaultRBAC = NewRBACEngine()
+
+// RequirePermission returns middleware that authenticates the request (see
+// RequireAuth) and then verifies that at least one of the JWT claims' scopes
+// names a role granting the given permission. Responds 401 if the token is
+// missing or invalid and 403 if no scope grants the permission.
+//
+// Usage: mux.HandleFunc("POST /api/v1/vms", auth.RequirePermission("vm", "create")(handler))
+func RequirePermission(resource, action string) func(http.HandlerFunc) http.HandlerFunc {
+    return func(next http.HandlerFunc) http.HandlerFunc {
+        return RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+            claims, ok := ClaimsFromContext(r.Context())
+            if !ok {
+                writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized", "code": "UNAUTHORIZED"})
+                return
+            }
+            for _, scope := range claims.Scopes {
+                if defaultRBAC.CheckPermission(scope, resource, action) == nil {
+                    next(w, r)
+                    return
+                }
+            }
+            writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden", "code": "FORBIDDEN"})
+        })
+    }
 }
 
 // IsValidRole returns true if the role name is a recognized built-in role.

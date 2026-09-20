@@ -1,3 +1,7 @@
+# ============================================================================
+# HiveStack Local Development .dockerignore
+# ============================================================================
+
 # Version control
 .git
 .gitignore
@@ -12,7 +16,7 @@ dist/
 coverage.out
 sbom.json
 
-# Go workspace and vendor caches
+# Go workspace
 go.work
 go.work.sum
 
@@ -34,8 +38,31 @@ docs/
 *.md
 CODEOWNERS
 LICENSE
+SECURITY.md
 
 # CI and local tooling
 .github/
-Dockerfile*
+.golangci.yml
+
+# Existing Docker files (avoid recursive copies)
+appliance/Dockerfile
 docker-compose*.yml
+docker-compose*.yaml
+
+# Scripts (only copied explicitly in Dockerfile)
+scripts/
+
+# Test files (not needed in production image)
+tests/
+*_test.go
+
+# Local config examples that may contain secrets
+config/*.yaml
+config/*.yml
+config/*.example
+
+# Systemd (reference only, not used in container)
+systemd/
+
+# Migration files are copied explicitly, but ignore any local overrides
+migration/

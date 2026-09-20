@@ -103,6 +103,21 @@ func (d *DB) GetUser(ctx context.Context, id string) (*User, error) {
 	return &u, nil
 }
 
+// GetUserInTenant retrieves a user by ID, scoped to a tenant. A user that
+// belongs to a different tenant is reported as not found.
+func (d *DB) GetUserInTenant(ctx context.Context, tenantID, id string) (*User, error) {
+	row := d.QueryRowContext(ctx, `
+        SELECT id, tenant_id, name, email, password_hash, role, created_at, updated_at
+        FROM users WHERE tenant_id = $1 AND id = $2
+    `, tenantID, id)
+	var u User
+	err := row.Scan(&u.ID, &u.TenantID, &u.Name, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // GetUserByEmail retrieves a user by email within a tenant.
 func (d *DB) GetUserByEmail(ctx context.Context, tenantID, email string) (*User, error) {
 	row := d.QueryRowContext(ctx, `
@@ -320,6 +335,29 @@ func (d *DB) GetVM(ctx context.Context, id string) (*VM, error) {
                os, template_id, snapshot_count, created_at, started_at, updated_at
         FROM vm WHERE id = $1
     `, id)
+	var vm VM
+	err := row.Scan(&vm.ID, &vm.TenantID, &vm.ClusterID, &vm.HostID, &vm.Identifier, &vm.Name, &vm.Description, &vm.Status,
+		&vm.Role, &vm.CPUs, &vm.CPUAllocation, &vm.MemoryBytes,
+		&vm.NUMAPolicy, &vm.HugepagesEnabled, &vm.CPUPinning, &vm.MemoryReservationBytes,
+		&vm.BallooningAllowed, &vm.SwapAllowed,
+		&vm.OS, &vm.TemplateID, &vm.SnapshotCount, &vm.CreatedAt, &vm.StartedAt, &vm.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &vm, nil
+}
+
+// GetVMInTenant retrieves a VM by ID, scoped to a tenant. A VM that belongs
+// to a different tenant is reported as not found.
+func (d *DB) GetVMInTenant(ctx context.Context, tenantID, id string) (*VM, error) {
+	row := d.QueryRowContext(ctx, `
+        SELECT id, tenant_id, cluster_id, host_id, identifier, name, description, status,
+               role, cpus, cpu_allocation, memory_bytes,
+               numa_policy, hugepages_enabled, cpu_pinning, memory_reservation_bytes,
+               ballooning_allowed, swap_allowed,
+               os, template_id, snapshot_count, created_at, started_at, updated_at
+        FROM vm WHERE tenant_id = $1 AND id = $2
+    `, tenantID, id)
 	var vm VM
 	err := row.Scan(&vm.ID, &vm.TenantID, &vm.ClusterID, &vm.HostID, &vm.Identifier, &vm.Name, &vm.Description, &vm.Status,
 		&vm.Role, &vm.CPUs, &vm.CPUAllocation, &vm.MemoryBytes,
