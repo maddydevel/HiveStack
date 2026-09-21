@@ -137,9 +137,9 @@ func TestNewController(t *testing.T) {
 		errContains string
 	}{
 		{
-			name:      "nil orchestrator returns error",
-			cfg:       ControllerConfig{},
-			expectErr: true,
+			name:        "nil orchestrator returns error",
+			cfg:         ControllerConfig{},
+			expectErr:   true,
 			errContains: "orchestrator is required",
 		},
 		{
@@ -183,10 +183,10 @@ func TestNewController(t *testing.T) {
 		{
 			name: "nil processor is allowed",
 			cfg: ControllerConfig{
-				Orchestrator:    newMockOrchestrator(),
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       nil,
+				Orchestrator:       newMockOrchestrator(),
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: nil,
 			},
 			expectErr: false,
 		},
@@ -366,10 +366,10 @@ func TestRegisterUnregisterNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, err := NewController(ControllerConfig{
-				Orchestrator:    newMockOrchestrator(),
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       tt.processor,
+				Orchestrator:       newMockOrchestrator(),
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: tt.processor,
 			})
 			if err != nil {
 				t.Fatalf("NewController: %v", err)
@@ -448,10 +448,10 @@ func TestProcessHeartbeat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, err := NewController(ControllerConfig{
-				Orchestrator:    newMockOrchestrator(),
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       tt.processor,
+				Orchestrator:       newMockOrchestrator(),
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: tt.processor,
 			})
 			if err != nil {
 				t.Fatalf("NewController: %v", err)
@@ -489,10 +489,10 @@ func TestGetNodeHealth(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
+		name      string
 		processor *HeartbeatProcessor
-		nodeID   string
-		wantOK   bool
+		nodeID    string
+		wantOK    bool
 		wantState HealthState
 	}{
 		{
@@ -519,10 +519,10 @@ func TestGetNodeHealth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, err := NewController(ControllerConfig{
-				Orchestrator:    newMockOrchestrator(),
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       tt.processor,
+				Orchestrator:       newMockOrchestrator(),
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: tt.processor,
 			})
 			if err != nil {
 				t.Fatalf("NewController: %v", err)
@@ -573,10 +573,10 @@ func TestGetAllHealth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl, err := NewController(ControllerConfig{
-				Orchestrator:    newMockOrchestrator(),
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       tt.processor,
+				Orchestrator:       newMockOrchestrator(),
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: tt.processor,
 			})
 			if err != nil {
 				t.Fatalf("NewController: %v", err)
@@ -600,10 +600,10 @@ func TestGetAllHealth(t *testing.T) {
 
 func TestGetStatus(t *testing.T) {
 	tests := []struct {
-		name           string
-		processor      *HeartbeatProcessor
-		running        bool
-		expectNodes    bool
+		name            string
+		processor       *HeartbeatProcessor
+		running         bool
+		expectNodes     bool
 		expectFailovers bool
 	}{
 		{
@@ -621,8 +621,8 @@ func TestGetStatus(t *testing.T) {
 			expectNodes: true,
 		},
 		{
-			name:           "running with orchestrator",
-			running:        true,
+			name:            "running with orchestrator",
+			running:         true,
 			expectFailovers: true,
 		},
 	}
@@ -631,10 +631,10 @@ func TestGetStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			orch := newMockOrchestrator()
 			ctrl, err := NewController(ControllerConfig{
-				Orchestrator:    orch,
-				Threshold:       DefaultThresholds(),
-				FailoverTimeout: 5 * time.Minute,
-				HeartbeatProcessor:       tt.processor,
+				Orchestrator:       orch,
+				Threshold:          DefaultThresholds(),
+				FailoverTimeout:    5 * time.Minute,
+				HeartbeatProcessor: tt.processor,
 			})
 			if err != nil {
 				t.Fatalf("NewController: %v", err)
@@ -883,10 +883,10 @@ func TestMainLoopTriggersFailover(t *testing.T) {
 
 	orch := newMockOrchestrator()
 	ctrl, err := NewController(ControllerConfig{
-		Orchestrator:    orch,
-		Threshold:       HealthThresholds{HeartbeatInterval: 50 * time.Millisecond, SuspectThreshold: 1, OfflineThreshold: 2},
-		FailoverTimeout: 5 * time.Minute,
-		HeartbeatProcessor:       processor,
+		Orchestrator:       orch,
+		Threshold:          HealthThresholds{HeartbeatInterval: 50 * time.Millisecond, SuspectThreshold: 1, OfflineThreshold: 2},
+		FailoverTimeout:    5 * time.Minute,
+		HeartbeatProcessor: processor,
 	})
 	if err != nil {
 		t.Fatalf("NewController: %v", err)
@@ -935,8 +935,8 @@ func TestHandleTransitionEvents(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		transition StateTransition
+		name        string
+		transition  StateTransition
 		expectEvent string
 	}{
 		{
@@ -1018,11 +1018,11 @@ func TestReconcileMetricsCallback(t *testing.T) {
 
 	orch := newMockOrchestrator()
 	ctrl, err := NewController(ControllerConfig{
-		Orchestrator:    orch,
-		Threshold:       DefaultThresholds(),
-		FailoverTimeout: 5 * time.Minute,
-		HeartbeatProcessor:       processor,
-		MetricsCallback: metricsCallback,
+		Orchestrator:       orch,
+		Threshold:          DefaultThresholds(),
+		FailoverTimeout:    5 * time.Minute,
+		HeartbeatProcessor: processor,
+		MetricsCallback:    metricsCallback,
 	})
 	if err != nil {
 		t.Fatalf("NewController: %v", err)
@@ -1060,11 +1060,11 @@ func TestReconcileNilMetricsCallback(t *testing.T) {
 
 	orch := newMockOrchestrator()
 	ctrl, err := NewController(ControllerConfig{
-		Orchestrator:    orch,
-		Threshold:       DefaultThresholds(),
-		FailoverTimeout: 5 * time.Minute,
-		HeartbeatProcessor:       processor,
-		MetricsCallback: nil, // explicitly nil
+		Orchestrator:       orch,
+		Threshold:          DefaultThresholds(),
+		FailoverTimeout:    5 * time.Minute,
+		HeartbeatProcessor: processor,
+		MetricsCallback:    nil, // explicitly nil
 	})
 	if err != nil {
 		t.Fatalf("NewController: %v", err)

@@ -45,16 +45,16 @@ type Fencer interface {
 
 // FenceConfig holds configuration for a fencing backend.
 type FenceConfig struct {
-	Method          FenceMethod   `json:"method"`
-	Host            string        `json:"host"`             // IPMI/BMC IP, Redfish endpoint, SSH host
-	Port            int           `json:"port"`             // Service port
-	Username        string        `json:"username"`         // Auth username
-	Password        string        `json:"password"`         // Auth password
-	SSHKeyPath      string        `json:"ssh_key_path"`     // Path to SSH private key for SSH fencing
-	RedfishPath     string        `json:"redfish_path"`     // Redfish Systems endpoint path
-	Timeout         time.Duration `json:"timeout"`          // Per-attempt timeout
-	MaxRetries      int           `json:"max_retries"`      // Retry attempts
-	RetryInterval   time.Duration `json:"retry_interval"`   // Delay between retries
+	Method        FenceMethod   `json:"method"`
+	Host          string        `json:"host"`           // IPMI/BMC IP, Redfish endpoint, SSH host
+	Port          int           `json:"port"`           // Service port
+	Username      string        `json:"username"`       // Auth username
+	Password      string        `json:"password"`       // Auth password
+	SSHKeyPath    string        `json:"ssh_key_path"`   // Path to SSH private key for SSH fencing
+	RedfishPath   string        `json:"redfish_path"`   // Redfish Systems endpoint path
+	Timeout       time.Duration `json:"timeout"`        // Per-attempt timeout
+	MaxRetries    int           `json:"max_retries"`    // Retry attempts
+	RetryInterval time.Duration `json:"retry_interval"` // Delay between retries
 }
 
 // DefaultFenceConfig returns sensible defaults.

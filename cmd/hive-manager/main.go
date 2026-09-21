@@ -8,14 +8,15 @@
 //
 // Usage:
 //
-//     hive-manager [command]
+//	hive-manager [command]
 //
 // Available Commands:
-//     run         Start the HiveStack Manager service
-//     init        Initialize a new HiveStack deployment (one-command bootstrap)
-//     migrate     Run database migrations
-//     validate    Validate configuration file
-//     version     Print version and exit
+//
+//	run         Start the HiveStack Manager service
+//	init        Initialize a new HiveStack deployment (one-command bootstrap)
+//	migrate     Run database migrations
+//	validate    Validate configuration file
+//	version     Print version and exit
 package main
 
 import (

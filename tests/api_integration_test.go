@@ -114,12 +114,12 @@ func TestFullAuthFlow_LoginCreateVMStartVM(t *testing.T) {
 
 	// Step 2: Create VM with token
 	createBody := map[string]interface{}{
-		"name":             "test-vm",
-		"cpus":             4,
-		"memory_bytes":     int64(8589934592),
-		"cpu_allocation":   "dedicated",
-		"role":             "generic",
-		"os":               "sles15",
+		"name":           "test-vm",
+		"cpus":           4,
+		"memory_bytes":   int64(8589934592),
+		"cpu_allocation": "dedicated",
+		"role":           "generic",
+		"os":             "sles15",
 	}
 	req, _ := http.NewRequest("POST", ts.URL+"/api/v1/vms", mustEncode(createBody))
 	req.Header.Set("Authorization", "Bearer "+token)

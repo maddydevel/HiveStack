@@ -11,15 +11,15 @@ import (
 // ---------- Mock implementations ----------
 
 type mockVMProvider struct {
-	mu              sync.Mutex
-	vmsByHost       map[string][]VM
-	vmHosts         map[string]string
-	policies        map[string]HAPolicy
-	getVMsByHostFn  func(ctx context.Context, hostID string) ([]VM, error)
-	getVMFn         func(ctx context.Context, vmID string) (*VM, error)
-	updateVMHostFn  func(ctx context.Context, vmID, newHostID string) error
-	getHAPolicyFn   func(ctx context.Context, vmID string) (*HAPolicy, error)
-	setHAPolicyFn   func(ctx context.Context, vmID string, policy HAPolicy) error
+	mu               sync.Mutex
+	vmsByHost        map[string][]VM
+	vmHosts          map[string]string
+	policies         map[string]HAPolicy
+	getVMsByHostFn   func(ctx context.Context, hostID string) ([]VM, error)
+	getVMFn          func(ctx context.Context, vmID string) (*VM, error)
+	updateVMHostFn   func(ctx context.Context, vmID, newHostID string) error
+	getHAPolicyFn    func(ctx context.Context, vmID string) (*HAPolicy, error)
+	setHAPolicyFn    func(ctx context.Context, vmID string, policy HAPolicy) error
 	listHAPoliciesFn func(ctx context.Context) (map[string]HAPolicy, error)
 }
 
@@ -312,7 +312,7 @@ func TestNewOrchestrator_Defaults(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -839,10 +839,10 @@ func TestHandleHostFailure_SomeVMsFail(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		VMRestarter: restarter,
-		Fencer:      newOrchMockFencer(),
+		VMRestarter:  restarter,
+		Fencer:       newOrchMockFencer(),
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -880,10 +880,10 @@ func TestHandleHostFailure_HAModeMaxOne(t *testing.T) {
 	hostProvider.hosts["host-2"] = makeHost("host-2", "online", false)
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		VMRestarter: restarter,
-		Fencer:      newOrchMockFencer(),
+		VMRestarter:  restarter,
+		Fencer:       newOrchMockFencer(),
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -925,9 +925,9 @@ func TestHandleHostFailure_GetHAPolicyError(t *testing.T) {
 	hostProvider.hosts["host-2"] = makeHost("host-2", "online", false)
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		Fencer:      newOrchMockFencer(),
+		Fencer:       newOrchMockFencer(),
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -957,9 +957,9 @@ func TestRestartVMs_Success(t *testing.T) {
 	restarter := newMockVMRestarter()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		VMRestarter: restarter,
+		VMRestarter:  restarter,
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -1004,7 +1004,7 @@ func TestRestartVMs_UpdateHostError(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -1032,9 +1032,9 @@ func TestRestartVMs_StartVMError(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		VMRestarter: restarter,
+		VMRestarter:  restarter,
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -1056,7 +1056,7 @@ func TestRestartVMs_NoRestarterConfigured(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 		// No VMRestarter configured
 	}
@@ -1080,7 +1080,7 @@ func TestRestartVMs_EmptyVMList(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -1103,7 +1103,7 @@ func TestGetActiveFailovers_Empty(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -1124,7 +1124,7 @@ func TestGetFailoverHistory_Empty(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -1143,7 +1143,7 @@ func TestGetFailoverHistory_Limit(t *testing.T) {
 	hostProvider := newMockHostProvider()
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
 	}
 	o, err := NewOrchestrator(cfg)
@@ -1203,9 +1203,9 @@ func TestGetFailoverHistory_MaxHistory(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		MaxHistory:  3,
+		MaxHistory:   3,
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -1252,10 +1252,10 @@ func TestConcurrentFailover_DifferentNodes(t *testing.T) {
 	hostProvider.hosts["host-4"] = makeHost("host-4", "online", false)
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		VMRestarter: restarter,
-		Fencer:      newOrchMockFencer(),
+		VMRestarter:  restarter,
+		Fencer:       newOrchMockFencer(),
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {
@@ -1307,9 +1307,9 @@ func TestConcurrentFailover_SameNode(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{
-		VMProvider:  vmProvider,
+		VMProvider:   vmProvider,
 		HostProvider: hostProvider,
-		Fencer:      newOrchMockFencer(),
+		Fencer:       newOrchMockFencer(),
 	}
 	o, err := NewOrchestrator(cfg)
 	if err != nil {

@@ -15,10 +15,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "valid auto mode",
 			policy: HAPolicy{
-				VMID:         "vm-1",
-				Mode:         HAModeAuto,
-				Priority:     100,
-				MaxRestarts:  3,
+				VMID:          "vm-1",
+				Mode:          HAModeAuto,
+				Priority:      100,
+				MaxRestarts:   3,
 				RestartWindow: 5 * time.Minute,
 			},
 			wantErr: false,
@@ -26,10 +26,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "valid manual mode",
 			policy: HAPolicy{
-				VMID:         "vm-2",
-				Mode:         HAModeManual,
-				Priority:     50,
-				MaxRestarts:  0,
+				VMID:          "vm-2",
+				Mode:          HAModeManual,
+				Priority:      50,
+				MaxRestarts:   0,
 				RestartWindow: 5 * time.Minute,
 			},
 			wantErr: false,
@@ -37,10 +37,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "valid never mode",
 			policy: HAPolicy{
-				VMID:         "vm-3",
-				Mode:         HAModeNever,
-				Priority:     0,
-				MaxRestarts:  1,
+				VMID:          "vm-3",
+				Mode:          HAModeNever,
+				Priority:      0,
+				MaxRestarts:   1,
 				RestartWindow: time.Hour,
 			},
 			wantErr: false,
@@ -48,10 +48,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "valid max-one mode",
 			policy: HAPolicy{
-				VMID:         "vm-4",
-				Mode:         HAModeMaxOne,
-				Priority:     200,
-				MaxRestarts:  5,
+				VMID:          "vm-4",
+				Mode:          HAModeMaxOne,
+				Priority:      200,
+				MaxRestarts:   5,
 				RestartWindow: 10 * time.Minute,
 			},
 			wantErr: false,
@@ -59,10 +59,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "invalid mode",
 			policy: HAPolicy{
-				VMID:         "vm-5",
-				Mode:         HAMode("invalid"),
-				Priority:     100,
-				MaxRestarts:  3,
+				VMID:          "vm-5",
+				Mode:          HAMode("invalid"),
+				Priority:      100,
+				MaxRestarts:   3,
 				RestartWindow: 5 * time.Minute,
 			},
 			wantErr: true,
@@ -70,10 +70,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "negative priority",
 			policy: HAPolicy{
-				VMID:         "vm-6",
-				Mode:         HAModeAuto,
-				Priority:     -1,
-				MaxRestarts:  3,
+				VMID:          "vm-6",
+				Mode:          HAModeAuto,
+				Priority:      -1,
+				MaxRestarts:   3,
 				RestartWindow: 5 * time.Minute,
 			},
 			wantErr: true,
@@ -81,10 +81,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "negative max_restarts",
 			policy: HAPolicy{
-				VMID:         "vm-7",
-				Mode:         HAModeAuto,
-				Priority:     100,
-				MaxRestarts:  -1,
+				VMID:          "vm-7",
+				Mode:          HAModeAuto,
+				Priority:      100,
+				MaxRestarts:   -1,
 				RestartWindow: 5 * time.Minute,
 			},
 			wantErr: true,
@@ -92,10 +92,10 @@ func TestPolicyValidation(t *testing.T) {
 		{
 			name: "zero restart_window defaults",
 			policy: HAPolicy{
-				VMID:         "vm-8",
-				Mode:         HAModeAuto,
-				Priority:     100,
-				MaxRestarts:  3,
+				VMID:          "vm-8",
+				Mode:          HAModeAuto,
+				Priority:      100,
+				MaxRestarts:   3,
 				RestartWindow: 0,
 			},
 			wantErr: false,

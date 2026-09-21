@@ -35,7 +35,7 @@ type ClientConfig struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"password"`
-	Password string `json:"-"` // never serialized
+	Password string `json:"-"`        // never serialized
 	Insecure bool   `json:"insecure"` // skip TLS verification
 }
 
@@ -124,35 +124,35 @@ type Datacenter struct {
 
 // VM represents a virtual machine in the vCenter inventory.
 type VM struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	PowerState      string   `json:"power_state"` // "poweredOn", "poweredOff", "suspended"
-	GuestOS         string   `json:"guest_os"`
-	NumCPUs         int      `json:"num_cpus"`
-	MemoryMB        int64    `json:"memory_mb"`
-	DiskGB          int64    `json:"disk_gb"`
-	VMwareTools     string   `json:"vmware_tools"` // "toolsOk", "toolsOld", "toolsNotRunning"
-	IPAddress       string   `json:"ip_address,omitempty"`
-	HostName        string   `json:"host_name"`
-	Networks        []string `json:"networks"`
-	Datastores      []string `json:"datastores"`
-	Annotation      string   `json:"annotation,omitempty"`
-	ProvisioningType string  `json:"provisioning_type"` // "thin", "thick", "eagerZeroed"
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	PowerState       string   `json:"power_state"` // "poweredOn", "poweredOff", "suspended"
+	GuestOS          string   `json:"guest_os"`
+	NumCPUs          int      `json:"num_cpus"`
+	MemoryMB         int64    `json:"memory_mb"`
+	DiskGB           int64    `json:"disk_gb"`
+	VMwareTools      string   `json:"vmware_tools"` // "toolsOk", "toolsOld", "toolsNotRunning"
+	IPAddress        string   `json:"ip_address,omitempty"`
+	HostName         string   `json:"host_name"`
+	Networks         []string `json:"networks"`
+	Datastores       []string `json:"datastores"`
+	Annotation       string   `json:"annotation,omitempty"`
+	ProvisioningType string   `json:"provisioning_type"` // "thin", "thick", "eagerZeroed"
 }
 
 // Host represents an ESXi host in vCenter.
 type Host struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Model        string `json:"model"`
-	CPUMHz       int64  `json:"cpu_mhz"`
-	CPUCores     int    `json:"cpu_cores"`
-	MemoryBytes  int64  `json:"memory_bytes"`
-	Connection   string `json:"connection"` // "connected", "disconnected", "notResponding"
-	VMwareESX    string `json:"vmware_esx"` // e.g. "VMware ESXi 7.0.3"
-	NumVMs       int    `json:"num_vms"`
-	Networks     []string `json:"networks"`
-	Datastores   []string `json:"datastores"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Model       string   `json:"model"`
+	CPUMHz      int64    `json:"cpu_mhz"`
+	CPUCores    int      `json:"cpu_cores"`
+	MemoryBytes int64    `json:"memory_bytes"`
+	Connection  string   `json:"connection"` // "connected", "disconnected", "notResponding"
+	VMwareESX   string   `json:"vmware_esx"` // e.g. "VMware ESXi 7.0.3"
+	NumVMs      int      `json:"num_vms"`
+	Networks    []string `json:"networks"`
+	Datastores  []string `json:"datastores"`
 }
 
 // Discover performs inventory discovery from vCenter.
@@ -292,9 +292,9 @@ func (c *Client) GetGuestInfo(ctx context.Context, vmID string) (map[string]stri
 		return nil, err
 	}
 	return map[string]string{
-		"guestFullName":    vm.GuestOS,
-		"guestIpAddress":   vm.IPAddress,
+		"guestFullName":      vm.GuestOS,
+		"guestIpAddress":     vm.IPAddress,
 		"toolsRunningStatus": vm.VMwareTools,
-		"toolsVersion":     "12350",
+		"toolsVersion":       "12350",
 	}, nil
 }

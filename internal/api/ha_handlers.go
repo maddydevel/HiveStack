@@ -30,11 +30,11 @@ func (s *APIServer) handleHAStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := map[string]interface{}{
-		"enabled":    true,
-		"controller": "running",
-		"nodes_online": 0,
-		"nodes_suspect": 0,
-		"nodes_offline": 0,
+		"enabled":          true,
+		"controller":       "running",
+		"nodes_online":     0,
+		"nodes_suspect":    0,
+		"nodes_offline":    0,
 		"active_failovers": 0,
 		"thresholds": map[string]interface{}{
 			"heartbeat_interval": "30s",
@@ -71,9 +71,9 @@ func (s *APIServer) handleHAFailover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		NodeID  string `json:"node_id"`
-		Force   bool   `json:"force,omitempty"`
-		DryRun  bool   `json:"dry_run,omitempty"`
+		NodeID string `json:"node_id"`
+		Force  bool   `json:"force,omitempty"`
+		DryRun bool   `json:"dry_run,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -97,9 +97,9 @@ func (s *APIServer) handleHAFailover(w http.ResponseWriter, r *http.Request) {
 
 	if req.DryRun {
 		s.respondJSON(w, http.StatusOK, map[string]interface{}{
-			"status":   "dry_run",
-			"node_id":  req.NodeID,
-			"message":  "Failover would be triggered (dry run)",
+			"status":  "dry_run",
+			"node_id": req.NodeID,
+			"message": "Failover would be triggered (dry run)",
 		})
 		return
 	}
@@ -231,11 +231,11 @@ func (s *APIServer) handleListHANodes(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]map[string]interface{}, 0, len(health))
 	for id, h := range health {
 		nodes = append(nodes, map[string]interface{}{
-			"node_id":            id,
-			"state":              h.GetState().String(),
-			"missed_heartbeats":  h.GetMissedCount(),
-			"vms":                h.VMs,
-			"resources":          h.Resources,
+			"node_id":           id,
+			"state":             h.GetState().String(),
+			"missed_heartbeats": h.GetMissedCount(),
+			"vms":               h.VMs,
+			"resources":         h.Resources,
 		})
 	}
 

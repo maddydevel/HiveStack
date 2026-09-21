@@ -20,19 +20,19 @@ import (
 type haService struct {
 	mu sync.Mutex
 
-	db           *db.DB
-	manager      *Manager
+	db      *db.DB
+	manager *Manager
 
 	// HA subsystems
-	controller    *ha.Controller
-	haController  haControllerAdapter
+	controller     *ha.Controller
+	haController   haControllerAdapter
 	haOrchestrator ha.Orchestrator
-	policyManager *ha.PolicyManager
+	policyManager  *ha.PolicyManager
 
 	// Configuration
-	thresholds   ha.HealthThresholds
-	running      bool
-	cancel       context.CancelFunc
+	thresholds ha.HealthThresholds
+	running    bool
+	cancel     context.CancelFunc
 
 	// Dependencies for orchestrator
 	fencer    ha.Fencer
@@ -161,12 +161,12 @@ func (s *haService) Start(ctx context.Context) error {
 
 	// Create orchestrator config
 	orchConfig := ha.OrchestratorConfig{
-		Fencer:         s.fencer,
-		Scheduler:      s.scheduler,
-		VMProvider:     s,
-		HostProvider:   s,
-		VMRestarter:    &vmRestartAdapter{manager: s.manager},
-		Policy:         ha.DefaultPolicy(),
+		Fencer:       s.fencer,
+		Scheduler:    s.scheduler,
+		VMProvider:   s,
+		HostProvider: s,
+		VMRestarter:  &vmRestartAdapter{manager: s.manager},
+		Policy:       ha.DefaultPolicy(),
 	}
 
 	orchestrator, err := ha.NewOrchestrator(orchConfig)

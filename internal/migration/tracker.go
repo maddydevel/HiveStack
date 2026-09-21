@@ -49,40 +49,40 @@ func (s JobState) String() string { return string(s) }
 
 // VMImportStatus tracks the progress of a single VM import.
 type VMImportStatus struct {
-	VMID         string        `json:"vm_id"`
-	VMName       string        `json:"vm_name"`
-	State        string        `json:"state"` // "pending", "copying", "converting", "booting", "done", "failed"
-	Progress     float64       `json:"progress"` // 0-100
-	BytesTotal   int64         `json:"bytes_total"`
-	BytesCopied  int64         `json:"bytes_copied"`
-	StartedAt    *time.Time    `json:"started_at,omitempty"`
-	CompletedAt  *time.Time    `json:"completed_at,omitempty"`
-	Error        string        `json:"error,omitempty"`
+	VMID            string        `json:"vm_id"`
+	VMName          string        `json:"vm_name"`
+	State           string        `json:"state"`    // "pending", "copying", "converting", "booting", "done", "failed"
+	Progress        float64       `json:"progress"` // 0-100
+	BytesTotal      int64         `json:"bytes_total"`
+	BytesCopied     int64         `json:"bytes_copied"`
+	StartedAt       *time.Time    `json:"started_at,omitempty"`
+	CompletedAt     *time.Time    `json:"completed_at,omitempty"`
+	Error           string        `json:"error,omitempty"`
 	PreflightChecks []CheckResult `json:"preflight_checks,omitempty"`
 }
 
 // CheckResult captures the outcome of a pre-flight compatibility check.
 type CheckResult struct {
-	Name      string `json:"name"`
-	Passed    bool   `json:"passed"`
-	Severity  string `json:"severity"` // "info", "warning", "critical"
-	Message   string `json:"message"`
+	Name     string `json:"name"`
+	Passed   bool   `json:"passed"`
+	Severity string `json:"severity"` // "info", "warning", "critical"
+	Message  string `json:"message"`
 }
 
 // Job represents a single vCenter import migration.
 type Job struct {
 	ID          string                     `json:"id"`
-	State       JobState                  `json:"state"`
-	Source      vcenter.ClientConfig      `json:"source"`
+	State       JobState                   `json:"state"`
+	Source      vcenter.ClientConfig       `json:"source"`
 	VMStatuses  map[string]*VMImportStatus `json:"vm_statuses"`
 	VMIDs       []string                   `json:"vm_ids"`
-	TotalBytes  int64                     `json:"total_bytes"`
-	CopiedBytes int64                     `json:"copied_bytes"`
-	Error       string                    `json:"error,omitempty"`
-	CreatedAt   time.Time                 `json:"created_at"`
-	UpdatedAt   time.Time                 `json:"updated_at"`
-	StartedAt   *time.Time                `json:"started_at,omitempty"`
-	CompletedAt *time.Time                `json:"completed_at,omitempty"`
+	TotalBytes  int64                      `json:"total_bytes"`
+	CopiedBytes int64                      `json:"copied_bytes"`
+	Error       string                     `json:"error,omitempty"`
+	CreatedAt   time.Time                  `json:"created_at"`
+	UpdatedAt   time.Time                  `json:"updated_at"`
+	StartedAt   *time.Time                 `json:"started_at,omitempty"`
+	CompletedAt *time.Time                 `json:"completed_at,omitempty"`
 }
 
 // Progress returns overall job progress as a percentage (0-100).

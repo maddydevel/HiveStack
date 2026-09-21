@@ -339,11 +339,11 @@ func TestNodeService_Heartbeat(t *testing.T) {
 	// Need to start the gRPC server AND run the agent so libvirt gets connected
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	// Start agent in background
 	go agent.Run(ctx)
 	time.Sleep(100 * time.Millisecond)
-	
+
 	gs.Start(ctx)
 	time.Sleep(50 * time.Millisecond)
 
@@ -641,9 +641,9 @@ func TestNodeService_ExecuteCommand_StorageCreate(t *testing.T) {
 		NodeId:      "node-1",
 		CommandType: proto.CommandType_StorageCreate,
 		Params: map[string]string{
-			"pool":  "default-pool",
-			"name":  "vol-1",
-			"size":  "1073741824",
+			"pool": "default-pool",
+			"name": "vol-1",
+			"size": "1073741824",
 		},
 	})
 	if err != nil {

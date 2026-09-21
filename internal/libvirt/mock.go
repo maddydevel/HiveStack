@@ -15,23 +15,23 @@ import (
 // MockLibvirt is a mock implementation that satisfies the same interface as
 // Libvirt without requiring a real libvirt daemon.
 type MockLibvirt struct {
-	mu          sync.Mutex
-	uri         string
-	connected   bool
-	domains     map[string]*mockDomain
-	hostInfo    HostInfo
-	nextVMID    int
+	mu        sync.Mutex
+	uri       string
+	connected bool
+	domains   map[string]*mockDomain
+	hostInfo  HostInfo
+	nextVMID  int
 }
 
 // mockDomain represents a simulated VM domain.
 type mockDomain struct {
-	ID      string
-	Name    string
-	XML     string
-	CPUs    int
-	Memory  uint64
-	State   string // "running", "shut off", "paused"
-	HostID  string
+	ID     string
+	Name   string
+	XML    string
+	CPUs   int
+	Memory uint64
+	State  string // "running", "shut off", "paused"
+	HostID string
 }
 
 // NewMockLibvirt creates a new mock libvirt instance.

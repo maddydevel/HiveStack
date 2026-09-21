@@ -55,10 +55,10 @@ func DefaultChecker() *Checker {
 
 // Result aggregates all checks for a single VM.
 type Result struct {
-	VMID     string        `json:"vm_id"`
-	VMName   string        `json:"vm_name"`
-	Passed   bool          `json:"passed"`
-	Checks   []CheckDetail `json:"checks"`
+	VMID   string        `json:"vm_id"`
+	VMName string        `json:"vm_name"`
+	Passed bool          `json:"passed"`
+	Checks []CheckDetail `json:"checks"`
 }
 
 // CheckDetail is a single compatibility check.

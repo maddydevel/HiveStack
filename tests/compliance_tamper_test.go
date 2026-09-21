@@ -36,7 +36,7 @@ func buildTestEvidenceRecords(n int) []compliance.EvidenceRecord {
 		hash := compliance.ComputeRecordHash(
 			previousHash,
 			profile,
-			nil, // no violations
+			nil,  // no violations
 			true, // passed
 			checkedBy,
 			timestamp,

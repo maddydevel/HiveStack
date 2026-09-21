@@ -221,7 +221,7 @@ func TestScoreHost(t *testing.T) {
 			CPUCount:         16,
 			MemoryTotalBytes: 32 * 1024 * 1024 * 1024,
 			MemoryUsedBytes:  4 * 1024 * 1024 * 1024,
-			VMCount:         0,
+			VMCount:          0,
 		},
 		{
 			ID:               "host-loaded",
@@ -230,7 +230,7 @@ func TestScoreHost(t *testing.T) {
 			CPUCount:         16,
 			MemoryTotalBytes: 32 * 1024 * 1024 * 1024,
 			MemoryUsedBytes:  24 * 1024 * 1024 * 1024,
-			VMCount:         10,
+			VMCount:          10,
 		},
 	}
 
@@ -244,11 +244,11 @@ func TestScoreHost(t *testing.T) {
 
 	// Verify that ineligible host returns -1
 	badHost := Host{
-		ID:      "bad",
-		Status:  "offline",
-		CPUCount: 2,
+		ID:               "bad",
+		Status:           "offline",
+		CPUCount:         2,
 		MemoryTotalBytes: 4 * 1024 * 1024 * 1024,
-		MemoryUsedBytes: 2 * 1024 * 1024 * 1024,
+		MemoryUsedBytes:  2 * 1024 * 1024 * 1024,
 	}
 	scoreBad := scheduler.ScoreHost(vm, badHost, policy)
 	if scoreBad != -1 {

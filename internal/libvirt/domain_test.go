@@ -95,7 +95,7 @@ func TestGenerateDomainXML_XMLEscaping(t *testing.T) {
 
 func TestGenerateDomainXML_UUIDUniqueness(t *testing.T) {
 	spec := DomainSpec{Name: "test-vm", MemoryBytes: 1024 * 1024 * 1024, VCPUs: 1}
-	
+
 	uuids := make(map[string]bool)
 	for i := 0; i < 10; i++ {
 		out, err := GenerateDomainXML(spec)

@@ -17,31 +17,31 @@ type Severity string
 
 // Event type constants.
 const (
-	VMCreated             EventType = "vm_created"
-	VMDeleted             EventType = "vm_deleted"
-	VMStarted             EventType = "vm_started"
-	VMStopped             EventType = "vm_stopped"
-	VMRestarted           EventType = "vm_restarted"
-	VMMigrated            EventType = "vm_migrated"
-	HostRegistered        EventType = "host_registered"
-	HostDecommissioned    EventType = "host_decommissioned"
-	HostMaintenanceEnter  EventType = "host_maintenance_enter"
-	HostMaintenanceExit   EventType = "host_maintenance_exit"
-	ComplianceCheckPassed EventType = "compliance_check_passed"
-	ComplianceCheckFailed EventType = "compliance_check_failed"
+	VMCreated               EventType = "vm_created"
+	VMDeleted               EventType = "vm_deleted"
+	VMStarted               EventType = "vm_started"
+	VMStopped               EventType = "vm_stopped"
+	VMRestarted             EventType = "vm_restarted"
+	VMMigrated              EventType = "vm_migrated"
+	HostRegistered          EventType = "host_registered"
+	HostDecommissioned      EventType = "host_decommissioned"
+	HostMaintenanceEnter    EventType = "host_maintenance_enter"
+	HostMaintenanceExit     EventType = "host_maintenance_exit"
+	ComplianceCheckPassed   EventType = "compliance_check_passed"
+	ComplianceCheckFailed   EventType = "compliance_check_failed"
 	ComplianceDriftDetected EventType = "compliance_drift_detected"
-	BackupCreated         EventType = "backup_created"
-	BackupRestored        EventType = "backup_restored"
-	BackupFailed          EventType = "backup_failed"
-	NodeRegistered        EventType = "node_registered"
-	NodeOffline           EventType = "node_offline"
+	BackupCreated           EventType = "backup_created"
+	BackupRestored          EventType = "backup_restored"
+	BackupFailed            EventType = "backup_failed"
+	NodeRegistered          EventType = "node_registered"
+	NodeOffline             EventType = "node_offline"
 )
 
 // Severity constants.
 const (
-	SeverityInfo    Severity = "info"
-	SeverityWarning Severity = "warning"
-	SeverityError   Severity = "error"
+	SeverityInfo     Severity = "info"
+	SeverityWarning  Severity = "warning"
+	SeverityError    Severity = "error"
 	SeverityCritical Severity = "critical"
 )
 
@@ -70,11 +70,11 @@ type Event struct {
 
 // EventFilter describes optional constraints for List queries.
 type EventFilter struct {
-	Type     *EventType    // exact match
-	Severity *Severity     // exact match
-	After    *string       // ISO-8601 timestamp; events after this time
-	Before   *string       // ISO-8601 timestamp; events before this time
-	Limit    int           // max rows to return
+	Type     *EventType // exact match
+	Severity *Severity  // exact match
+	After    *string    // ISO-8601 timestamp; events after this time
+	Before   *string    // ISO-8601 timestamp; events before this time
+	Limit    int        // max rows to return
 }
 
 // EventStore persists and retrieves Event records from the backing datastore.
@@ -113,17 +113,17 @@ type EventPublisher interface {
 // EventManager implements EventStore and EventPublisher. It writes every event
 // to the database and fans it out through an internal channel to subscribers.
 type EventManager struct {
-	db        *db.DB
-	pubCh     chan *Event
+	db          *db.DB
+	pubCh       chan *Event
 	subscribers map[string]chan *Event
-	mu         sync.RWMutex
+	mu          sync.RWMutex
 }
 
 // NewEventManager returns a ready-to-use EventManager.
 func NewEventManager(db *db.DB) *EventManager {
 	return &EventManager{
-		db:         db,
-		pubCh:      make(chan *Event, 256),
+		db:          db,
+		pubCh:       make(chan *Event, 256),
 		subscribers: make(map[string]chan *Event),
 	}
 }

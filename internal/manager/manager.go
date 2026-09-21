@@ -21,9 +21,9 @@ import (
 	"github.com/maddydevel/HiveStack/internal/compliance"
 	"github.com/maddydevel/HiveStack/internal/db"
 	"github.com/maddydevel/HiveStack/internal/ha"
-	hivetls "github.com/maddydevel/HiveStack/internal/tls"
 	"github.com/maddydevel/HiveStack/internal/libvirt"
 	"github.com/maddydevel/HiveStack/internal/node"
+	hivetls "github.com/maddydevel/HiveStack/internal/tls"
 	"github.com/maddydevel/HiveStack/migration"
 )
 
@@ -32,19 +32,19 @@ type roleContextKey struct{}
 
 // Manager holds the HiveStack Manager state and all its subsystems.
 type Manager struct {
-	mu         sync.Mutex
-	allocMu    sync.Mutex // serializes host capacity check + VM insert
-	db         *db.DB
-	store      vmStore // database access used by MigrateVM and event publishing
-	rbac       *auth.RBACEngine
-	compliance *compliance.ComplianceStore
-	apiServer  *api.APIServer
-	nodes      map[string]*node.Agent
+	mu          sync.Mutex
+	allocMu     sync.Mutex // serializes host capacity check + VM insert
+	db          *db.DB
+	store       vmStore // database access used by MigrateVM and event publishing
+	rbac        *auth.RBACEngine
+	compliance  *compliance.ComplianceStore
+	apiServer   *api.APIServer
+	nodes       map[string]*node.Agent
 	controllers map[string]node.VMController // remote node agents reached over gRPC
-	shutdownCh chan struct{}
-	wg         sync.WaitGroup
-	running    bool
-	haSvc      *haService
+	shutdownCh  chan struct{}
+	wg          sync.WaitGroup
+	running     bool
+	haSvc       *haService
 
 	// migrations holds the capacity claimed on the target host by each in-flight
 	// migration, keyed by VM ID. The VM's row still points at its source host
@@ -90,13 +90,13 @@ func New(database *db.DB) (*Manager, error) {
 	nodes := make(map[string]*node.Agent)
 
 	m := &Manager{
-		db:         database,
-		store:      database,
-		rbac:       rbac,
-		compliance: compliance,
-		nodes:      nodes,
+		db:          database,
+		store:       database,
+		rbac:        rbac,
+		compliance:  compliance,
+		nodes:       nodes,
 		controllers: make(map[string]node.VMController),
-		shutdownCh: make(chan struct{}),
+		shutdownCh:  make(chan struct{}),
 	}
 
 	// Create the HA service (does not start it yet)
@@ -331,16 +331,16 @@ func (m *Manager) CreateHost(ctx context.Context, name, hostname, ip, tan, label
 	}
 
 	host := &db.Host{
-		Name:         name,
-		Hostname:     hostname,
-		IPAddress:    ip,
-		Status:       "pending",
-		OS:           "linux",
-		Hypervisor:   "kvm",
-		MemoryTotalBytes: 0,
+		Name:              name,
+		Hostname:          hostname,
+		IPAddress:         ip,
+		Status:            "pending",
+		OS:                "linux",
+		Hypervisor:        "kvm",
+		MemoryTotalBytes:  0,
 		StorageTotalBytes: 0,
-		CPUCount:     0,
-		MaintenanceMode: false,
+		CPUCount:          0,
+		MaintenanceMode:   false,
 	}
 
 	id, err := m.store.CreateHost(ctx, host)
@@ -498,21 +498,21 @@ func (m *Manager) ListHosts(ctx context.Context) ([]*db.Host, error) {
 
 // VMSpec holds the specification for creating a new VM.
 type VMSpec struct {
-	Name            string
-	Description     string
-	HostID          string
-	CPUS            int
-	CPUAllocation   string
-	MemoryBytes     int64
-	NUMAPolicy      string
-	HugepagesEnabled bool
-	CPUPinning      []byte
+	Name                   string
+	Description            string
+	HostID                 string
+	CPUS                   int
+	CPUAllocation          string
+	MemoryBytes            int64
+	NUMAPolicy             string
+	HugepagesEnabled       bool
+	CPUPinning             []byte
 	MemoryReservationBytes int64
 	BallooningAllowed      bool
 	SwapAllowed            bool
-	Role              string
-	OS               string
-	TemplateID       string
+	Role                   string
+	OS                     string
+	TemplateID             string
 }
 
 // CreateVM validates the spec, enforces HANA compliance, generates libvirt XML,
@@ -593,23 +593,23 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 
 	// Insert VM record
 	vm := &db.VM{
-		HostID:                  &spec.HostID,
-		Identifier:              spec.Name,
-		Name:                    spec.Name,
-		Description:             spec.Description,
-		Status:                  "created",
-		Role:                    db.VMRole(spec.Role),
-		CPUs:                    spec.CPUS,
-		CPUAllocation:           spec.CPUAllocation,
-		MemoryBytes:             spec.MemoryBytes,
-		NUMAPolicy:              nil,
-		HugepagesEnabled:        spec.HugepagesEnabled,
-		CPUPinning:              spec.CPUPinning,
-		MemoryReservationBytes:  spec.MemoryReservationBytes,
-		BallooningAllowed:       spec.BallooningAllowed,
-		SwapAllowed:             spec.SwapAllowed,
-		OS:                      spec.OS,
-		TemplateID:              nil,
+		HostID:                 &spec.HostID,
+		Identifier:             spec.Name,
+		Name:                   spec.Name,
+		Description:            spec.Description,
+		Status:                 "created",
+		Role:                   db.VMRole(spec.Role),
+		CPUs:                   spec.CPUS,
+		CPUAllocation:          spec.CPUAllocation,
+		MemoryBytes:            spec.MemoryBytes,
+		NUMAPolicy:             nil,
+		HugepagesEnabled:       spec.HugepagesEnabled,
+		CPUPinning:             spec.CPUPinning,
+		MemoryReservationBytes: spec.MemoryReservationBytes,
+		BallooningAllowed:      spec.BallooningAllowed,
+		SwapAllowed:            spec.SwapAllowed,
+		OS:                     spec.OS,
+		TemplateID:             nil,
 	}
 	if spec.TemplateID != "" {
 		tmplID := spec.TemplateID
@@ -1284,10 +1284,10 @@ func (m *Manager) GetVMStats(ctx context.Context, vmID string) (map[string]inter
 	})
 	if !ok {
 		return map[string]interface{}{
-			"cpu_usage":   0,
+			"cpu_usage":    0,
 			"memory_usage": 0,
-			"disk_io":     0,
-			"network_io":  0,
+			"disk_io":      0,
+			"network_io":   0,
 		}, nil
 	}
 	return stats.GetVMStats(ctx, vmID)

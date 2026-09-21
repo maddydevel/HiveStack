@@ -126,9 +126,9 @@ func (t *migrationJobTracker) List() []*MigrationJob {
 
 // VMXImportSpec wraps a parsed VMX for import.
 type VMXImportSpec struct {
-	ParsedVM *migration.ParsedVM `json:"parsed_vm"`
-	HostID   string              `json:"host_id"`
-	ClusterID string             `json:"cluster_id,omitempty"`
+	ParsedVM  *migration.ParsedVM `json:"parsed_vm"`
+	HostID    string              `json:"host_id"`
+	ClusterID string              `json:"cluster_id,omitempty"`
 }
 
 // registerMigrationRoutes mounts migration endpoints on the API server.
@@ -220,8 +220,8 @@ func (s *APIServer) handleVMXImport(w http.ResponseWriter, r *http.Request) {
 
 	// Pre-flight compliance check
 	s.migrationJobTracker.Update(job.ID, "validating", map[string]interface{}{
-		"vm_name": parsedVM.DisplayName,
-		"cpus":    parsedVM.CPUs,
+		"vm_name":   parsedVM.DisplayName,
+		"cpus":      parsedVM.CPUs,
 		"memory_mb": parsedVM.MemoryMB,
 	})
 
@@ -237,11 +237,11 @@ func (s *APIServer) handleVMXImport(w http.ResponseWriter, r *http.Request) {
 
 	complianceResult := compliance.ValidateHANAProfile(vmProfile)
 	s.migrationJobTracker.Update(job.ID, "validating", map[string]interface{}{
-		"vm_name":     parsedVM.DisplayName,
-		"cpus":        parsedVM.CPUs,
-		"memory_mb":   parsedVM.MemoryMB,
-		"compliance":  complianceResult.Passed,
-		"violations":  len(complianceResult.Violations),
+		"vm_name":    parsedVM.DisplayName,
+		"cpus":       parsedVM.CPUs,
+		"memory_mb":  parsedVM.MemoryMB,
+		"compliance": complianceResult.Passed,
+		"violations": len(complianceResult.Violations),
 	})
 
 	// Create VM via migration handler
@@ -312,7 +312,7 @@ func (s *APIServer) handleListMigrationJobs(w http.ResponseWriter, r *http.Reque
 
 	jobs := s.migrationJobTracker.List()
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"jobs": jobs,
+		"jobs":  jobs,
 		"count": len(jobs),
 	})
 }
@@ -398,26 +398,26 @@ func (s *APIServer) handleVMXPrecheck(w http.ResponseWriter, r *http.Request) {
 	result := compliance.ValidateHANAProfile(vmProfile)
 
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"file":        header.Filename,
-		"vm_name":     parsedVM.DisplayName,
-		"guest_os":    parsedVM.GuestOS,
-		"cpus":        parsedVM.CPUs,
-		"memory_mb":   parsedVM.MemoryMB,
-		"disks":       len(parsedVM.Disks),
-		"networks":    len(parsedVM.Networks),
-		"role":        role,
-		"compliant":   result.Passed,
-		"violations":  result.Violations,
-		"tenant_id":   claims.TenantID,
+		"file":       header.Filename,
+		"vm_name":    parsedVM.DisplayName,
+		"guest_os":   parsedVM.GuestOS,
+		"cpus":       parsedVM.CPUs,
+		"memory_mb":  parsedVM.MemoryMB,
+		"disks":      len(parsedVM.Disks),
+		"networks":   len(parsedVM.Networks),
+		"role":       role,
+		"compliant":  result.Passed,
+		"violations": result.Violations,
+		"tenant_id":  claims.TenantID,
 	})
 }
 
 // VMXImportResult holds the result of a VMX import operation.
 type VMXImportResult struct {
-	JobID   string `json:"job_id"`
-	VMID    string `json:"vm_id"`
-	VMName  string `json:"vm_name"`
-	Status  string `json:"status"`
+	JobID  string `json:"job_id"`
+	VMID   string `json:"vm_id"`
+	VMName string `json:"vm_name"`
+	Status string `json:"status"`
 }
 
 // Ensure db.VM import is used (avoid unused import).

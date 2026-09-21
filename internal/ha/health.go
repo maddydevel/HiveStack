@@ -117,13 +117,13 @@ func (h *Heartbeat) Validate() error {
 
 // NodeHealth tracks the health state and heartbeat history for a single host.
 type NodeHealth struct {
-	NodeID           string      `json:"node_id"`
-	State            HealthState `json:"state"`
-	LastHeartbeat    time.Time   `json:"last_heartbeat"`
-	MissedHeartbeats int         `json:"missed_beats"`
-	FirstMissedAt    *time.Time  `json:"first_missed_at,omitempty"`
-	LastSequence     uint64      `json:"last_sequence"`
-	VMs              []string    `json:"vms"`
+	NodeID           string        `json:"node_id"`
+	State            HealthState   `json:"state"`
+	LastHeartbeat    time.Time     `json:"last_heartbeat"`
+	MissedHeartbeats int           `json:"missed_beats"`
+	FirstMissedAt    *time.Time    `json:"first_missed_at,omitempty"`
+	LastSequence     uint64        `json:"last_sequence"`
+	VMs              []string      `json:"vms"`
 	Resources        HostResources `json:"resources"`
 	mu               sync.RWMutex
 }
@@ -198,9 +198,9 @@ func (n *NodeHealth) GetMissedCount() int {
 
 // HealthThresholds defines configurable parameters for failure detection.
 type HealthThresholds struct {
-	HeartbeatInterval  time.Duration `json:"heartbeat_interval"`
-	SuspectThreshold   int           `json:"suspect_threshold"`  // missed heartbeats before suspect
-	OfflineThreshold   int           `json:"offline_threshold"`  // missed heartbeats before offline
+	HeartbeatInterval time.Duration `json:"heartbeat_interval"`
+	SuspectThreshold  int           `json:"suspect_threshold"` // missed heartbeats before suspect
+	OfflineThreshold  int           `json:"offline_threshold"` // missed heartbeats before offline
 }
 
 // DefaultThresholds returns the default health thresholds.

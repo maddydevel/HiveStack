@@ -251,12 +251,12 @@ func (c *CephRBDBackend) CloneDisk(ctx context.Context, vmID, sourceHost, target
 
 // ISCSIBackend implements StorageBackend for iSCSI.
 type ISCSIBackend struct {
-	mu           sync.Mutex
-	targetIQN    string
-	portalHost   string
-	portalPort   int
-	targetLUN    int
-	devicePath   string
+	mu            sync.Mutex
+	targetIQN     string
+	portalHost    string
+	portalPort    int
+	targetLUN     int
+	devicePath    string
 	initiatorName string
 }
 

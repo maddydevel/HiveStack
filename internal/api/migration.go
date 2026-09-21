@@ -11,36 +11,36 @@ import (
 type ImportJobState string
 
 const (
-	ImportJobPending    ImportJobState = "pending"
-	ImportJobPreflight  ImportJobState = "preflight"
-	ImportJobParsing    ImportJobState = "parsing"
-	ImportJobImporting  ImportJobState = "importing"
-	ImportJobCompleted  ImportJobState = "completed"
-	ImportJobFailed     ImportJobState = "failed"
-	ImportJobCancelled  ImportJobState = "cancelled"
+	ImportJobPending   ImportJobState = "pending"
+	ImportJobPreflight ImportJobState = "preflight"
+	ImportJobParsing   ImportJobState = "parsing"
+	ImportJobImporting ImportJobState = "importing"
+	ImportJobCompleted ImportJobState = "completed"
+	ImportJobFailed    ImportJobState = "failed"
+	ImportJobCancelled ImportJobState = "cancelled"
 )
 
 // ImportJob tracks the progress of an OVF/OVA import.
 type ImportJob struct {
-	ID          string                 `json:"id"`
-	State       ImportJobState         `json:"state"`
-	SourceURL   string                 `json:"source_url"`
-	OVFInfo     *ParsedOVFResult       `json:"ovf_info,omitempty"`
-	Progress    int                    `json:"progress_percent"` // 0-100
-	StartedAt   time.Time              `json:"started_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	CompletedAt *time.Time             `json:"completed_at,omitempty"`
-	Error       string                 `json:"error,omitempty"`
-	TargetHost  string                 `json:"target_host,omitempty"`
-	Labels      map[string]string      `json:"labels,omitempty"`
-	Preflight   *PreflightResult       `json:"preflight,omitempty"`
+	ID          string            `json:"id"`
+	State       ImportJobState    `json:"state"`
+	SourceURL   string            `json:"source_url"`
+	OVFInfo     *ParsedOVFResult  `json:"ovf_info,omitempty"`
+	Progress    int               `json:"progress_percent"` // 0-100
+	StartedAt   time.Time         `json:"started_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	CompletedAt *time.Time        `json:"completed_at,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	TargetHost  string            `json:"target_host,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Preflight   *PreflightResult  `json:"preflight,omitempty"`
 }
 
 // PreflightResult holds the results of a compatibility pre-flight check.
 type PreflightResult struct {
-	Compatible   bool     `json:"compatible"`
-	Checks       []Check  `json:"checks"`
-	CheckedAt    time.Time `json:"checked_at"`
+	Compatible bool      `json:"compatible"`
+	Checks     []Check   `json:"checks"`
+	CheckedAt  time.Time `json:"checked_at"`
 }
 
 // Check is a single pre-flight compatibility check result.

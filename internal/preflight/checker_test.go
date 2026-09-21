@@ -26,9 +26,9 @@ func TestCheckCPU(t *testing.T) {
 	c := DefaultChecker()
 
 	tests := []struct {
-		name    string
-		cpu     int
-		wantOK  bool
+		name     string
+		cpu      int
+		wantOK   bool
 		severity string
 	}{
 		{"valid 4 CPUs", 4, true, SeverityInfo},
@@ -109,9 +109,9 @@ func TestCheckDisk(t *testing.T) {
 	c := DefaultChecker()
 
 	tests := []struct {
-		name    string
-		diskGB  int64
-		wantOK  bool
+		name   string
+		diskGB int64
+		wantOK bool
 	}{
 		{"valid 100GB", 100, true},
 		{"valid 1TB", 1024, true},
@@ -122,9 +122,9 @@ func TestCheckDisk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			vm := vcenter.VM{
-				ID:      "test-vm",
-				Name:    "test",
-				DiskGB:  tt.diskGB,
+				ID:     "test-vm",
+				Name:   "test",
+				DiskGB: tt.diskGB,
 			}
 			result := c.CheckVM(vm)
 			diskFound := false
@@ -160,9 +160,9 @@ func TestCheckGuestOS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			vm := vcenter.VM{
-				ID:       "test-vm",
-				Name:     "test",
-				GuestOS:  tt.guestOS,
+				ID:      "test-vm",
+				Name:    "test",
+				GuestOS: tt.guestOS,
 			}
 			result := c.CheckVM(vm)
 			osFound := false
@@ -185,9 +185,9 @@ func TestCheckNetworks(t *testing.T) {
 	c := DefaultChecker()
 
 	tests := []struct {
-		name    string
+		name     string
 		networks []string
-		wantOK  bool
+		wantOK   bool
 	}{
 		{"mapped network", []string{"VM Network"}, true},
 		{"multiple mapped", []string{"VM Network", "SAP-DB"}, true},
@@ -224,21 +224,21 @@ func TestCheckAll(t *testing.T) {
 
 	vms := []vcenter.VM{
 		{
-			ID:      "vm-1",
-			Name:    "test1",
-			NumCPUs: 2,
+			ID:       "vm-1",
+			Name:     "test1",
+			NumCPUs:  2,
 			MemoryMB: 4096,
-			DiskGB:  50,
-			GuestOS: "sles15_64Guest",
+			DiskGB:   50,
+			GuestOS:  "sles15_64Guest",
 			Networks: []string{"VM Network"},
 		},
 		{
-			ID:      "vm-2",
-			Name:    "test2",
-			NumCPUs: 4,
+			ID:       "vm-2",
+			Name:     "test2",
+			NumCPUs:  4,
 			MemoryMB: 8192,
-			DiskGB:  100,
-			GuestOS: "rhel9_64Guest",
+			DiskGB:   100,
+			GuestOS:  "rhel9_64Guest",
 			Networks: []string{"SAP-App"},
 		},
 	}
@@ -260,7 +260,7 @@ func TestSAPPass(t *testing.T) {
 
 	sapVM := vcenter.VM{
 		ID:               "vm-sap-1",
-		Name:            "SAP-APP-01",
+		Name:             "SAP-APP-01",
 		PowerState:       "poweredOn",
 		GuestOS:          "sles15_64Guest",
 		NumCPUs:          8,

@@ -19,7 +19,7 @@ import (
 // mockVMProvider implements ha.VMProvider for testing.
 type mockVMProvider struct {
 	mu       sync.Mutex
-	vms      map[string]ha.VM      // vmID -> VM
+	vms      map[string]ha.VM       // vmID -> VM
 	policies map[string]ha.HAPolicy // vmID -> policy
 	hosts    map[string]string      // vmID -> hostID
 }
@@ -270,12 +270,12 @@ func TestHAFailover_E2E_VMRestartWithin5Min(t *testing.T) {
 
 	// Create orchestrator
 	orchestrator, err := ha.NewOrchestrator(ha.OrchestratorConfig{
-		Fencer:        fencer,
-		Scheduler:     ha.NewDefaultScheduler(),
-		VMProvider:    vmProvider,
-		HostProvider:  hostProvider,
-		VMRestarter:   vmRestarter,
-		MaxHistory:    10,
+		Fencer:       fencer,
+		Scheduler:    ha.NewDefaultScheduler(),
+		VMProvider:   vmProvider,
+		HostProvider: hostProvider,
+		VMRestarter:  vmRestarter,
+		MaxHistory:   10,
 	})
 	if err != nil {
 		t.Fatalf("NewOrchestrator error: %v", err)

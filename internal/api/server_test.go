@@ -18,181 +18,262 @@ import (
 
 // mockDB implements dbInterface for testing.
 type mockDB struct {
-	users        []db.User
-	hosts        []db.Host
-	vms          []db.VM
-	pools        []db.StoragePool
-	networks     []db.Network
-	backups      []db.Backup
-	events       []db.Event
-	datacenters  []db.Datacenter
-	err          map[string]error // optional errors per method name
+	users       []db.User
+	hosts       []db.Host
+	vms         []db.VM
+	pools       []db.StoragePool
+	networks    []db.Network
+	backups     []db.Backup
+	events      []db.Event
+	datacenters []db.Datacenter
+	err         map[string]error // optional errors per method name
 }
 
 func (m *mockDB) ListUsers(ctx context.Context, tenantID string) ([]db.User, error) {
-	if e, ok := m.err["ListUsers"]; ok { return nil, e }
+	if e, ok := m.err["ListUsers"]; ok {
+		return nil, e
+	}
 	return m.users, nil
 }
 func (m *mockDB) CreateUser(ctx context.Context, u *db.User) (string, error) {
-	if e, ok := m.err["CreateUser"]; ok { return "", e }
+	if e, ok := m.err["CreateUser"]; ok {
+		return "", e
+	}
 	m.users = append(m.users, *u)
 	return "test-user-id", nil
 }
 func (m *mockDB) GetUser(ctx context.Context, id string) (*db.User, error) {
-	if e, ok := m.err["GetUser"]; ok { return nil, e }
+	if e, ok := m.err["GetUser"]; ok {
+		return nil, e
+	}
 	for i := range m.users {
-		if m.users[i].ID == id { return &m.users[i], nil }
+		if m.users[i].ID == id {
+			return &m.users[i], nil
+		}
 	}
 	return nil, fmt.Errorf("user not found")
 }
 func (m *mockDB) UpdateUser(ctx context.Context, id string, updates map[string]interface{}) error {
-	if e, ok := m.err["UpdateUser"]; ok { return e }
+	if e, ok := m.err["UpdateUser"]; ok {
+		return e
+	}
 	return nil
 }
 func (m *mockDB) DeleteUser(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteUser"]; ok { return e }
+	if e, ok := m.err["DeleteUser"]; ok {
+		return e
+	}
 	for i, u := range m.users {
-		if u.ID == id { m.users = append(m.users[:i], m.users[i+1:]...); return nil }
+		if u.ID == id {
+			m.users = append(m.users[:i], m.users[i+1:]...)
+			return nil
+		}
 	}
 	return fmt.Errorf("user not found")
 }
 
 func (m *mockDB) ListHosts(ctx context.Context, tenantID string) ([]db.Host, error) {
-	if e, ok := m.err["ListHosts"]; ok { return nil, e }
+	if e, ok := m.err["ListHosts"]; ok {
+		return nil, e
+	}
 	return m.hosts, nil
 }
 func (m *mockDB) CreateHost(ctx context.Context, h *db.Host) (string, error) {
-	if e, ok := m.err["CreateHost"]; ok { return "", e }
+	if e, ok := m.err["CreateHost"]; ok {
+		return "", e
+	}
 	m.hosts = append(m.hosts, *h)
 	return "test-host-id", nil
 }
 func (m *mockDB) GetHost(ctx context.Context, id string) (*db.Host, error) {
-	if e, ok := m.err["GetHost"]; ok { return nil, e }
+	if e, ok := m.err["GetHost"]; ok {
+		return nil, e
+	}
 	for i := range m.hosts {
-		if m.hosts[i].ID == id { return &m.hosts[i], nil }
+		if m.hosts[i].ID == id {
+			return &m.hosts[i], nil
+		}
 	}
 	return nil, fmt.Errorf("host not found")
 }
 func (m *mockDB) UpdateHost(ctx context.Context, id string, updates map[string]interface{}) error {
-	if e, ok := m.err["UpdateHost"]; ok { return e }
+	if e, ok := m.err["UpdateHost"]; ok {
+		return e
+	}
 	return nil
 }
 func (m *mockDB) DeleteHost(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteHost"]; ok { return e }
+	if e, ok := m.err["DeleteHost"]; ok {
+		return e
+	}
 	return nil
 }
 
 func (m *mockDB) ListVMs(ctx context.Context, tenantID string) ([]db.VM, error) {
-	if e, ok := m.err["ListVMs"]; ok { return nil, e }
+	if e, ok := m.err["ListVMs"]; ok {
+		return nil, e
+	}
 	return m.vms, nil
 }
 func (m *mockDB) CreateVM(ctx context.Context, vm *db.VM) (string, error) {
-	if e, ok := m.err["CreateVM"]; ok { return "", e }
+	if e, ok := m.err["CreateVM"]; ok {
+		return "", e
+	}
 	m.vms = append(m.vms, *vm)
 	return "test-vm-id", nil
 }
 func (m *mockDB) GetVM(ctx context.Context, id string) (*db.VM, error) {
-	if e, ok := m.err["GetVM"]; ok { return nil, e }
+	if e, ok := m.err["GetVM"]; ok {
+		return nil, e
+	}
 	for i := range m.vms {
-		if m.vms[i].ID == id { return &m.vms[i], nil }
+		if m.vms[i].ID == id {
+			return &m.vms[i], nil
+		}
 	}
 	return nil, fmt.Errorf("vm not found")
 }
 func (m *mockDB) UpdateVM(ctx context.Context, id string, updates map[string]interface{}) error {
-	if e, ok := m.err["UpdateVM"]; ok { return e }
+	if e, ok := m.err["UpdateVM"]; ok {
+		return e
+	}
 	return nil
 }
 func (m *mockDB) DeleteVM(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteVM"]; ok { return e }
+	if e, ok := m.err["DeleteVM"]; ok {
+		return e
+	}
 	return nil
 }
 
 func (m *mockDB) ListStoragePools(ctx context.Context, tenantID string) ([]db.StoragePool, error) {
-	if e, ok := m.err["ListStoragePools"]; ok { return nil, e }
+	if e, ok := m.err["ListStoragePools"]; ok {
+		return nil, e
+	}
 	return m.pools, nil
 }
 func (m *mockDB) CreateStoragePool(ctx context.Context, sp *db.StoragePool) (string, error) {
-	if e, ok := m.err["CreateStoragePool"]; ok { return "", e }
+	if e, ok := m.err["CreateStoragePool"]; ok {
+		return "", e
+	}
 	m.pools = append(m.pools, *sp)
 	return "test-pool-id", nil
 }
 func (m *mockDB) GetStoragePool(ctx context.Context, id string) (*db.StoragePool, error) {
-	if e, ok := m.err["GetStoragePool"]; ok { return nil, e }
+	if e, ok := m.err["GetStoragePool"]; ok {
+		return nil, e
+	}
 	for i := range m.pools {
-		if m.pools[i].ID == id { return &m.pools[i], nil }
+		if m.pools[i].ID == id {
+			return &m.pools[i], nil
+		}
 	}
 	return nil, fmt.Errorf("pool not found")
 }
 func (m *mockDB) DeleteStoragePool(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteStoragePool"]; ok { return e }
+	if e, ok := m.err["DeleteStoragePool"]; ok {
+		return e
+	}
 	return nil
 }
 
 func (m *mockDB) ListNetworks(ctx context.Context, tenantID string) ([]db.Network, error) {
-	if e, ok := m.err["ListNetworks"]; ok { return nil, e }
+	if e, ok := m.err["ListNetworks"]; ok {
+		return nil, e
+	}
 	return m.networks, nil
 }
 func (m *mockDB) CreateNetwork(ctx context.Context, n *db.Network) (string, error) {
-	if e, ok := m.err["CreateNetwork"]; ok { return "", e }
+	if e, ok := m.err["CreateNetwork"]; ok {
+		return "", e
+	}
 	m.networks = append(m.networks, *n)
 	return "test-net-id", nil
 }
 func (m *mockDB) GetNetwork(ctx context.Context, id string) (*db.Network, error) {
-	if e, ok := m.err["GetNetwork"]; ok { return nil, e }
+	if e, ok := m.err["GetNetwork"]; ok {
+		return nil, e
+	}
 	for i := range m.networks {
-		if m.networks[i].ID == id { return &m.networks[i], nil }
+		if m.networks[i].ID == id {
+			return &m.networks[i], nil
+		}
 	}
 	return nil, fmt.Errorf("network not found")
 }
 func (m *mockDB) DeleteNetwork(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteNetwork"]; ok { return e }
+	if e, ok := m.err["DeleteNetwork"]; ok {
+		return e
+	}
 	return nil
 }
 
 func (m *mockDB) ListBackups(ctx context.Context, tenantID string) ([]db.Backup, error) {
-	if e, ok := m.err["ListBackups"]; ok { return nil, e }
+	if e, ok := m.err["ListBackups"]; ok {
+		return nil, e
+	}
 	return m.backups, nil
 }
 func (m *mockDB) CreateBackup(ctx context.Context, b *db.Backup) (string, error) {
-	if e, ok := m.err["CreateBackup"]; ok { return "", e }
+	if e, ok := m.err["CreateBackup"]; ok {
+		return "", e
+	}
 	m.backups = append(m.backups, *b)
 	return "test-backup-id", nil
 }
 func (m *mockDB) GetBackup(ctx context.Context, id string) (*db.Backup, error) {
-	if e, ok := m.err["GetBackup"]; ok { return nil, e }
+	if e, ok := m.err["GetBackup"]; ok {
+		return nil, e
+	}
 	for i := range m.backups {
-		if m.backups[i].ID == id { return &m.backups[i], nil }
+		if m.backups[i].ID == id {
+			return &m.backups[i], nil
+		}
 	}
 	return nil, fmt.Errorf("backup not found")
 }
 func (m *mockDB) UpdateBackup(ctx context.Context, id string, updates map[string]interface{}) error {
-	if e, ok := m.err["UpdateBackup"]; ok { return e }
+	if e, ok := m.err["UpdateBackup"]; ok {
+		return e
+	}
 	return nil
 }
 
 func (m *mockDB) ListEvents(ctx context.Context, tenantID string, limit int) ([]db.Event, error) {
-	if e, ok := m.err["ListEvents"]; ok { return nil, e }
+	if e, ok := m.err["ListEvents"]; ok {
+		return nil, e
+	}
 	return m.events, nil
 }
 
 func (m *mockDB) ListDatacenters(ctx context.Context, tenantID string) ([]db.Datacenter, error) {
-	if e, ok := m.err["ListDatacenters"]; ok { return nil, e }
+	if e, ok := m.err["ListDatacenters"]; ok {
+		return nil, e
+	}
 	return m.datacenters, nil
 }
 func (m *mockDB) CreateDatacenter(ctx context.Context, dc *db.Datacenter) (string, error) {
-	if e, ok := m.err["CreateDatacenter"]; ok { return "", e }
+	if e, ok := m.err["CreateDatacenter"]; ok {
+		return "", e
+	}
 	m.datacenters = append(m.datacenters, *dc)
 	return "test-dc-id", nil
 }
 func (m *mockDB) GetDatacenter(ctx context.Context, id string) (*db.Datacenter, error) {
-	if e, ok := m.err["GetDatacenter"]; ok { return nil, e }
+	if e, ok := m.err["GetDatacenter"]; ok {
+		return nil, e
+	}
 	for i := range m.datacenters {
-		if m.datacenters[i].ID == id { return &m.datacenters[i], nil }
+		if m.datacenters[i].ID == id {
+			return &m.datacenters[i], nil
+		}
 	}
 	return nil, fmt.Errorf("datacenter not found")
 }
 func (m *mockDB) DeleteDatacenter(ctx context.Context, id string) error {
-	if e, ok := m.err["DeleteDatacenter"]; ok { return e }
+	if e, ok := m.err["DeleteDatacenter"]; ok {
+		return e
+	}
 	return nil
 }
 
@@ -252,10 +333,10 @@ func (h *mockVMHandler) DeleteSnapshot(ctx context.Context, vmID, snapshotID str
 
 func (h *mockVMHandler) GetVMStats(ctx context.Context, vmID string) (map[string]interface{}, error) {
 	return map[string]interface{}{
-		"cpu_usage":   0,
+		"cpu_usage":    0,
 		"memory_usage": 0,
-		"disk_io":     0,
-		"network_io":  0,
+		"disk_io":      0,
+		"network_io":   0,
 	}, nil
 }
 
@@ -299,8 +380,8 @@ func TestHandleHealth(t *testing.T) {
 	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
 
 	mdb := &mockDB{}
-		srv := newTestAPI(t, mdb)
-		defer func() {}()
+	srv := newTestAPI(t, mdb)
+	defer func() {}()
 
 	// Health endpoint has no auth
 	req := httptest.NewRequest("GET", "/health", nil)
@@ -325,8 +406,8 @@ func TestHandleLogin(t *testing.T) {
 	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
 
 	mdb := &mockDB{}
-		srv := newTestAPI(t, mdb)
-		defer func() {}()
+	srv := newTestAPI(t, mdb)
+	defer func() {}()
 
 	// Missing body
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", nil)
@@ -356,8 +437,8 @@ func TestHandleMe(t *testing.T) {
 	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
 
 	mdb := &mockDB{}
-		srv := newTestAPI(t, mdb)
-		defer func() {}()
+	srv := newTestAPI(t, mdb)
+	defer func() {}()
 
 	// Unauthorized
 	req := httptest.NewRequest("GET", "/api/v1/auth/me", nil)
@@ -383,8 +464,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("ListUsers unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/users", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -395,8 +476,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("ListUsers authenticated", func(t *testing.T) {
 		mdb := &mockDB{users: []db.User{{ID: "u1", TenantID: "t1", Name: "Alice", Email: "a@test.com", Role: "admin"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/users", token, nil)
 		rec := httptest.NewRecorder()
@@ -408,8 +489,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("CreateUser unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := authRequest("POST", "/api/v1/users", "", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -420,8 +501,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("CreateUser missing fields", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/users", token, map[string]string{"name": ""})
 		rec := httptest.NewRecorder()
@@ -433,8 +514,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("CreateUser success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "Bob", "email": "b@test.com", "password": "secret", "role": "viewer"}
 		req := authRequest("POST", "/api/v1/users", token, body)
@@ -447,8 +528,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("GetUser not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/users/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -460,8 +541,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("GetUser success", func(t *testing.T) {
 		mdb := &mockDB{users: []db.User{{ID: "u1", TenantID: "t1", Name: "Alice", Email: "a@test.com", Role: "admin"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/users/u1", token, nil)
 		rec := httptest.NewRecorder()
@@ -478,8 +559,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("UpdateUser not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "NewName"}
 		req := authRequest("PUT", "/api/v1/users/nonexistent", token, body)
@@ -492,8 +573,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("UpdateUser success", func(t *testing.T) {
 		mdb := &mockDB{users: []db.User{{ID: "u1", TenantID: "t1", Name: "Alice", Email: "a@test.com", Role: "admin"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "NewName"}
 		req := authRequest("PUT", "/api/v1/users/u1", token, body)
@@ -506,8 +587,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("DeleteUser not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/users/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -519,8 +600,8 @@ func TestHandleUsersCRUD(t *testing.T) {
 
 	t.Run("DeleteUser success", func(t *testing.T) {
 		mdb := &mockDB{users: []db.User{{ID: "u1", TenantID: "t1", Name: "Alice", Email: "a@test.com", Role: "admin"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/users/u1", token, nil)
 		rec := httptest.NewRecorder()
@@ -537,8 +618,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("ListHosts unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/hosts", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -549,8 +630,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("ListHosts authenticated", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "online"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/hosts", token, nil)
 		rec := httptest.NewRecorder()
@@ -562,8 +643,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("RegisterHost success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "new-host", "hostname": "nh.local", "ip_address": "10.0.0.1"}
 		req := authRequest("POST", "/api/v1/hosts", token, body)
@@ -576,8 +657,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("GetHost not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/hosts/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -589,8 +670,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("GetHost success", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "online"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/hosts/h1", token, nil)
 		rec := httptest.NewRecorder()
@@ -602,8 +683,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("UpdateHost success", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "online"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "renamed", "status": "maintenance"}
 		req := authRequest("PUT", "/api/v1/hosts/h1", token, body)
@@ -616,8 +697,8 @@ func TestHandleHostsCRUD(t *testing.T) {
 
 	t.Run("DeleteHost success", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "online"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/hosts/h1", token, nil)
 		rec := httptest.NewRecorder()
@@ -634,8 +715,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("ListVMs unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/vms", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -646,8 +727,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("CreateVM unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := authRequest("POST", "/api/v1/vms", "", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -658,8 +739,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("CreateVM missing name", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]interface{}{"cpus": 4, "memory_bytes": int64(8589934592)}
 		req := authRequest("POST", "/api/v1/vms", token, body)
@@ -672,8 +753,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("CreateVM success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]interface{}{
 			"name": "test-vm", "cpus": 4, "memory_bytes": int64(8589934592),
@@ -689,8 +770,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("GetVM not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/vms/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -702,8 +783,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("GetVM success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/vms/vm1", token, nil)
 		rec := httptest.NewRecorder()
@@ -715,8 +796,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("UpdateVM not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "new-name"}
 		req := authRequest("PUT", "/api/v1/vms/nonexistent", token, body)
@@ -729,8 +810,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("UpdateVM success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "renamed-vm", "status": "stopped"}
 		req := authRequest("PUT", "/api/v1/vms/vm1", token, body)
@@ -743,8 +824,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("DeleteVM success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/vms/vm1", token, nil)
 		rec := httptest.NewRecorder()
@@ -756,8 +837,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("VMStart success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "stopped"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/vms/vm1/start", token, nil)
 		rec := httptest.NewRecorder()
@@ -769,8 +850,8 @@ func TestHandleVMsCRUD(t *testing.T) {
 
 	t.Run("VMStop success", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/vms/vm1/stop", token, nil)
 		rec := httptest.NewRecorder()
@@ -803,8 +884,8 @@ func TestHandleStoragePoolsCRUD(t *testing.T) {
 
 	t.Run("ListStoragePools unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/storage-pools", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -815,8 +896,8 @@ func TestHandleStoragePoolsCRUD(t *testing.T) {
 
 	t.Run("CreateStoragePool success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "pool1", "type": "directory", "path": "/data", "host_id": "host-1"}
 		req := authRequest("POST", "/api/v1/storage-pools", token, body)
@@ -830,7 +911,7 @@ func TestHandleStoragePoolsCRUD(t *testing.T) {
 	t.Run("DeleteStoragePool success", func(t *testing.T) {
 		mdb := &mockDB{pools: []db.StoragePool{{ID: "p1", TenantID: "t1", Name: "pool1", Type: "directory", Status: "active"}}}
 		srv := newTestAPI(t, mdb)
-			defer func() {}()
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"host_id": "host-1"}
 		req := authRequest("DELETE", "/api/v1/storage-pools/p1", token, body)
@@ -848,8 +929,8 @@ func TestHandleNetworksCRUD(t *testing.T) {
 
 	t.Run("CreateNetwork success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "net1", "type": "bridge", "bridge_name": "br0", "subnet": "10.0.0.0/24"}
 		req := authRequest("POST", "/api/v1/networks", token, body)
@@ -862,8 +943,8 @@ func TestHandleNetworksCRUD(t *testing.T) {
 
 	t.Run("GetNetwork not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/networks/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -875,8 +956,8 @@ func TestHandleNetworksCRUD(t *testing.T) {
 
 	t.Run("DeleteNetwork success", func(t *testing.T) {
 		mdb := &mockDB{networks: []db.Network{{ID: "n1", TenantID: "t1", Name: "net1", Type: "bridge", Status: "active"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/networks/n1", token, nil)
 		rec := httptest.NewRecorder()
@@ -893,8 +974,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("ListBackups unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/backups", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -905,8 +986,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("CreateBackup missing fields", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "backup1"}
 		req := authRequest("POST", "/api/v1/backups", token, body)
@@ -919,8 +1000,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("CreateBackup success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"vm_id": "vm1", "name": "backup1", "type": "full", "storage_path": "/backups"}
 		req := authRequest("POST", "/api/v1/backups", token, body)
@@ -933,8 +1014,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("GetBackup not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/backups/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -946,8 +1027,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("BackupRestore success", func(t *testing.T) {
 		mdb := &mockDB{backups: []db.Backup{{ID: "b1", TenantID: "t1", VMID: "vm1", Name: "backup1", Status: "completed"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/backups/b1/restore", token, nil)
 		rec := httptest.NewRecorder()
@@ -959,8 +1040,8 @@ func TestHandleBackupsCRUD(t *testing.T) {
 
 	t.Run("BackupCancel success", func(t *testing.T) {
 		mdb := &mockDB{backups: []db.Backup{{ID: "b1", TenantID: "t1", VMID: "vm1", Name: "backup1", Status: "creating"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/backups/b1/cancel", token, nil)
 		rec := httptest.NewRecorder()
@@ -977,8 +1058,8 @@ func TestHandleEvents(t *testing.T) {
 
 	t.Run("ListEvents unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/events", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -989,8 +1070,8 @@ func TestHandleEvents(t *testing.T) {
 
 	t.Run("ListEvents authenticated", func(t *testing.T) {
 		mdb := &mockDB{events: []db.Event{{ID: "e1", TenantID: "t1", Type: "vm_created", Severity: "info", Message: "VM created"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/events", token, nil)
 		rec := httptest.NewRecorder()
@@ -1007,8 +1088,8 @@ func TestHandleCompliance(t *testing.T) {
 
 	t.Run("ComplianceCheck unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/compliance/vms/vm1", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1019,8 +1100,8 @@ func TestHandleCompliance(t *testing.T) {
 
 	t.Run("ComplianceCheck vm not found", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/compliance/vms/nonexistent", token, nil)
 		rec := httptest.NewRecorder()
@@ -1032,8 +1113,8 @@ func TestHandleCompliance(t *testing.T) {
 
 	t.Run("ComplianceCheck generic VM passes", func(t *testing.T) {
 		mdb := &mockDB{vms: []db.VM{{ID: "vm1", TenantID: "t1", Name: "test-vm", CPUs: 4, MemoryBytes: 8589934592, Role: db.VMRoleGeneric, Status: "running"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/compliance/vms/vm1", token, nil)
 		rec := httptest.NewRecorder()
@@ -1050,8 +1131,8 @@ func TestHandleCompliance(t *testing.T) {
 
 	t.Run("ComplianceEvidence unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/compliance/evidence/vm1", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1062,8 +1143,8 @@ func TestHandleCompliance(t *testing.T) {
 
 	t.Run("ComplianceDrift unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/compliance/drift", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1078,8 +1159,8 @@ func TestHandleLogout(t *testing.T) {
 	defer os.Unsetenv("HIVESTACK_JWT_SECRET")
 
 	mdb := &mockDB{}
-		srv := newTestAPI(t, mdb)
-		defer func() {}()
+	srv := newTestAPI(t, mdb)
+	defer func() {}()
 
 	token := makeToken(t, "u1", "t1", []string{"viewer"})
 	req := authRequest("POST", "/api/v1/auth/logout", token, nil)
@@ -1096,8 +1177,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("ListDCs unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/datacenters", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1108,8 +1189,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("ListDCs authenticated returns empty", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"viewer"})
 		req := authRequest("GET", "/api/v1/datacenters", token, nil)
 		rec := httptest.NewRecorder()
@@ -1121,8 +1202,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("CreateDC unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("POST", "/api/v1/datacenters", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1133,8 +1214,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("CreateDC success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "dc1", "description": "main datacenter"}
 		req := authRequest("POST", "/api/v1/datacenters", token, body)
@@ -1176,8 +1257,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("ListClusters unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("GET", "/api/v1/clusters", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1188,8 +1269,8 @@ func TestHandleDatacentersClusters(t *testing.T) {
 
 	t.Run("CreateCluster success", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		body := map[string]string{"name": "cluster1", "description": "main cluster", "datacenter_id": "dc1"}
 		req := authRequest("POST", "/api/v1/clusters", token, body)
@@ -1207,8 +1288,8 @@ func TestHandleHostMaintenance(t *testing.T) {
 
 	t.Run("EnterMaintenance unauthorized", func(t *testing.T) {
 		mdb := &mockDB{}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		req := httptest.NewRequest("POST", "/api/v1/hosts/h1/maintenance", nil)
 		rec := httptest.NewRecorder()
 		srv.mux.ServeHTTP(rec, req)
@@ -1219,8 +1300,8 @@ func TestHandleHostMaintenance(t *testing.T) {
 
 	t.Run("EnterMaintenance success", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "online"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("POST", "/api/v1/hosts/h1/maintenance", token, nil)
 		rec := httptest.NewRecorder()
@@ -1232,8 +1313,8 @@ func TestHandleHostMaintenance(t *testing.T) {
 
 	t.Run("ExitMaintenance success", func(t *testing.T) {
 		mdb := &mockDB{hosts: []db.Host{{ID: "h1", TenantID: "t1", Name: "host1", Hostname: "h1.local", Status: "maintenance"}}}
-			srv := newTestAPI(t, mdb)
-			defer func() {}()
+		srv := newTestAPI(t, mdb)
+		defer func() {}()
 		token := makeToken(t, "u1", "t1", []string{"admin"})
 		req := authRequest("DELETE", "/api/v1/hosts/h1/maintenance", token, nil)
 		rec := httptest.NewRecorder()

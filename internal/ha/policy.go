@@ -30,13 +30,13 @@ func (m HAMode) String() string {
 
 // HAPolicy defines the HA behavior for a single VM.
 type HAPolicy struct {
-	VMID         string   `json:"vm_id"`
-	Mode         HAMode   `json:"mode"`          // auto, manual, never, max-one
-	Priority     int      `json:"priority"`      // 0=highest, higher=lower priority
-	AntiAffinity []string `json:"anti_affinity"` // VM IDs that must not share a host
-	MaxRestarts  int      `json:"max_restarts"`  // Max restart attempts within window
+	VMID          string        `json:"vm_id"`
+	Mode          HAMode        `json:"mode"`           // auto, manual, never, max-one
+	Priority      int           `json:"priority"`       // 0=highest, higher=lower priority
+	AntiAffinity  []string      `json:"anti_affinity"`  // VM IDs that must not share a host
+	MaxRestarts   int           `json:"max_restarts"`   // Max restart attempts within window
 	RestartWindow time.Duration `json:"restart_window"` // Time window for restart counting
-	LastModified time.Time `json:"last_modified"`
+	LastModified  time.Time     `json:"last_modified"`
 }
 
 // DefaultHAPolicy returns the default HA policy (auto-restart, priority 100).

@@ -1,14 +1,14 @@
 package node
 
 import (
-    "context"
-    "fmt"
-    "time"
+	"context"
+	"fmt"
+	"time"
 
-    "github.com/google/uuid"
-    "google.golang.org/grpc"
+	"github.com/google/uuid"
+	"google.golang.org/grpc"
 
-    "github.com/maddydevel/HiveStack/proto"
+	"github.com/maddydevel/HiveStack/proto"
 )
 
 // defaultCallTimeout bounds a single command when the caller's context has no
@@ -23,85 +23,85 @@ const defaultMigrateTimeout = 30 * time.Minute
 // node. It is satisfied by a local *Agent and by a *Client that forwards the
 // calls to a remote node agent over gRPC.
 type VMController interface {
-    StartVM(ctx context.Context, id string) error
-    StopVM(ctx context.Context, id string) error
-    DestroyVM(ctx context.Context, id string) error
+	StartVM(ctx context.Context, id string) error
+	StopVM(ctx context.Context, id string) error
+	DestroyVM(ctx context.Context, id string) error
 }
 
 // VMMigrator is implemented by nodes that can live-migrate a VM to another
 // host. It is separate from VMController because not every node can: the
 // Manager checks for it before attempting a migration.
 type VMMigrator interface {
-    // MigrateVM live-migrates the VM with the given ID from this node to
-    // targetHost, the address of the destination host.
-    MigrateVM(ctx context.Context, id, targetHost string) error
+	// MigrateVM live-migrates the VM with the given ID from this node to
+	// targetHost, the address of the destination host.
+	MigrateVM(ctx context.Context, id, targetHost string) error
 }
 
 var (
-	_ VMController     = (*Agent)(nil)
-	_ VMController     = (*Client)(nil)
-	_ VMMigrator       = (*Client)(nil)
+	_ VMController      = (*Agent)(nil)
+	_ VMController      = (*Client)(nil)
+	_ VMMigrator        = (*Client)(nil)
 	_ StorageController = (*Client)(nil)
 	_ NetworkController = (*Client)(nil)
 )
 
 // Client is a gRPC client for one node agent.
 type Client struct {
-    nodeID         string
-    conn           *grpc.ClientConn
-    rpc            proto.NodeAgentClient
-    timeout        time.Duration
-    migrateTimeout time.Duration
+	nodeID         string
+	conn           *grpc.ClientConn
+	rpc            proto.NodeAgentClient
+	timeout        time.Duration
+	migrateTimeout time.Duration
 }
 
 // Dial connects to the node agent at addr on behalf of nodeID. The caller must
 // supply transport credentials in opts (grpc.WithTransportCredentials); the
 // connection is established lazily on first use.
 func Dial(ctx context.Context, addr, nodeID string, opts ...grpc.DialOption) (*Client, error) {
-    if nodeID == "" {
-        return nil, fmt.Errorf("node_id is required")
-    }
-    conn, err := grpc.DialContext(ctx, addr, opts...)
-    if err != nil {
-        return nil, fmt.Errorf("dial node agent %s: %w", addr, err)
-    }
-    return &Client{
-        nodeID:         nodeID,
-        conn:           conn,
-        rpc:            proto.NewNodeAgentClient(conn),
-        timeout:        defaultCallTimeout,
-        migrateTimeout: defaultMigrateTimeout,
-    }, nil
+	if nodeID == "" {
+		return nil, fmt.Errorf("node_id is required")
+	}
+	conn, err := grpc.DialContext(ctx, addr, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("dial node agent %s: %w", addr, err)
+	}
+	return &Client{
+		nodeID:         nodeID,
+		conn:           conn,
+		rpc:            proto.NewNodeAgentClient(conn),
+		timeout:        defaultCallTimeout,
+		migrateTimeout: defaultMigrateTimeout,
+	}, nil
 }
 
 // Close releases the underlying connection.
 func (c *Client) Close() error {
-    return c.conn.Close()
+	return c.conn.Close()
 }
 
 // StartVM starts the VM with the given ID on the remote node.
 func (c *Client) StartVM(ctx context.Context, id string) error {
-    return c.execute(ctx, c.timeout, proto.CommandType_VMStart, id, nil)
+	return c.execute(ctx, c.timeout, proto.CommandType_VMStart, id, nil)
 }
 
 // StopVM stops the VM with the given ID on the remote node.
 func (c *Client) StopVM(ctx context.Context, id string) error {
-    return c.execute(ctx, c.timeout, proto.CommandType_VMStop, id, nil)
+	return c.execute(ctx, c.timeout, proto.CommandType_VMStop, id, nil)
 }
 
 // DestroyVM destroys the VM with the given ID on the remote node.
 func (c *Client) DestroyVM(ctx context.Context, id string) error {
-    return c.execute(ctx, c.timeout, proto.CommandType_VMDestroy, id, nil)
+	return c.execute(ctx, c.timeout, proto.CommandType_VMDestroy, id, nil)
 }
 
 // MigrateVM live-migrates the VM with the given ID from the remote node to
 // targetHost. It returns once the node reports the migration finished.
 func (c *Client) MigrateVM(ctx context.Context, id, targetHost string) error {
-    if targetHost == "" {
-        return fmt.Errorf("target host is required")
-    }
-    return c.execute(ctx, c.migrateTimeout, proto.CommandType_VMMigrate, id,
-        map[string]string{"target_host": targetHost})
+	if targetHost == "" {
+		return fmt.Errorf("target host is required")
+	}
+	return c.execute(ctx, c.migrateTimeout, proto.CommandType_VMMigrate, id,
+		map[string]string{"target_host": targetHost})
 }
 
 // execute sends a VM command and converts a failed command status, which the
@@ -250,10 +250,10 @@ func (c *Client) GetVMStats(ctx context.Context, vmID string) (map[string]interf
 	}
 	// Parse the result into a stats map
 	stats := map[string]interface{}{
-		"cpu_usage":   0.0,
+		"cpu_usage":    0.0,
 		"memory_usage": 0,
-		"disk_io":     0,
-		"network_io":  0,
+		"disk_io":      0,
+		"network_io":   0,
 	}
 	_ = resp.Result // in real implementation, parse resp.Result
 	return stats, nil

@@ -13,14 +13,14 @@ import (
 
 // DomainSpec holds the specification for generating KVM domain XML.
 type DomainSpec struct {
-	Name                   string
-	MemoryBytes            int64
-	VCPUs                  int
-	NUMAPolicy             string            // "centered", "bind", or "" for non-HANA
-	HugepagesEnabled       bool              // true for HANA
-	CPUPinning             map[string]string // vcpu -> host CPU mapping
-	BallooningAllowed      bool              // HANA: always false
-	DedicatedCPU           bool              // HANA: true for dedicated allocation
+	Name              string
+	MemoryBytes       int64
+	VCPUs             int
+	NUMAPolicy        string            // "centered", "bind", or "" for non-HANA
+	HugepagesEnabled  bool              // true for HANA
+	CPUPinning        map[string]string // vcpu -> host CPU mapping
+	BallooningAllowed bool              // HANA: always false
+	DedicatedCPU      bool              // HANA: true for dedicated allocation
 }
 
 // domain is the marshalled representation of a KVM domain.
@@ -49,9 +49,9 @@ type memEl struct {
 }
 
 type cpuEl struct {
-	Mode    string      `xml:"mode,attr"`
-	Match   string      `xml:"match,attr"`
-	Check   string      `xml:"check,attr,omitempty"`
+	Mode     string     `xml:"mode,attr"`
+	Match    string     `xml:"match,attr"`
+	Check    string     `xml:"check,attr,omitempty"`
 	Topology topologyEl `xml:"topology,omitempty"`
 }
 
@@ -75,7 +75,7 @@ type vcpuPin struct {
 }
 
 type vcpuPlacement struct {
-	VCPU   int `xml:"vcpu,attr"`
+	VCPU   int    `xml:"vcpu,attr"`
 	CPUSet string `xml:"cpuset,attr"`
 }
 
@@ -164,8 +164,8 @@ type diskTarget struct {
 }
 
 type iface struct {
-	Type   string     `xml:"type,attr"`
-	MAC    ifaceMAC   `xml:"mac"`
+	Type   string      `xml:"type,attr"`
+	MAC    ifaceMAC    `xml:"mac"`
 	Source ifaceSource `xml:"source"`
 	Model  ifaceModel  `xml:"model"`
 }
@@ -199,14 +199,14 @@ func GenerateDomainXML(spec DomainSpec) (string, error) {
 	}
 
 	d := domain{
-		Type:      "kvm",
-		Name:      spec.Name,
-		UUID:      uuid.New().String(),
-		Memory:    memEl{Unit: "bytes", Size: spec.MemoryBytes},
-		MemoryCur: memEl{Unit: "bytes", Size: spec.MemoryBytes},
-		VCPU:      spec.VCPUs,
-		OS:        osEl{Type: "hvm", Boot: bootEl{Dev: "hd"}},
-		Features:  featEl{ACPI: "", APIC: ""},
+		Type:       "kvm",
+		Name:       spec.Name,
+		UUID:       uuid.New().String(),
+		Memory:     memEl{Unit: "bytes", Size: spec.MemoryBytes},
+		MemoryCur:  memEl{Unit: "bytes", Size: spec.MemoryBytes},
+		VCPU:       spec.VCPUs,
+		OS:         osEl{Type: "hvm", Boot: bootEl{Dev: "hd"}},
+		Features:   featEl{ACPI: "", APIC: ""},
 		OnPoweroff: "destroy",
 		OnReboot:   "restart",
 		OnCrash:    "restart",

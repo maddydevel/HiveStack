@@ -29,20 +29,20 @@ const eventPublishTimeout = 5 * time.Second
 // Controller manages the HA subsystem: runs the health check ticker,
 // detects failures, and invokes the orchestrator.
 type Controller struct {
-	mu                sync.Mutex
-	processor         *HeartbeatProcessor
-	orchestrator      Orchestrator
-	fencer            Fencer
-	scheduler         Scheduler
-	running           bool
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	threshold         HealthThresholds
-	failoverTimeout   time.Duration
-	metricsCallback   func(metric string, value float64, labels map[string]string)
-	eventCallback     func(eventType, severity, message string)
-	eventPublisher    EventPublisher
-	inFlight          map[string]struct{} // nodes with a failover currently running
+	mu              sync.Mutex
+	processor       *HeartbeatProcessor
+	orchestrator    Orchestrator
+	fencer          Fencer
+	scheduler       Scheduler
+	running         bool
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	threshold       HealthThresholds
+	failoverTimeout time.Duration
+	metricsCallback func(metric string, value float64, labels map[string]string)
+	eventCallback   func(eventType, severity, message string)
+	eventPublisher  EventPublisher
+	inFlight        map[string]struct{} // nodes with a failover currently running
 }
 
 // ControllerConfig holds configuration for the HA controller.
@@ -356,7 +356,7 @@ func (c *Controller) GetStatus() map[string]interface{} {
 	defer c.mu.Unlock()
 
 	status := map[string]interface{}{
-		"running": c.running,
+		"running":    c.running,
 		"thresholds": c.threshold,
 	}
 

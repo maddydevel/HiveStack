@@ -35,16 +35,16 @@ func TestDualEnforcement_ValidHANAPassesBoth(t *testing.T) {
 
 	// Node Agent libvirt XML generation
 	xml, err := libvirt.GenerateDomainXML(libvirt.DomainSpec{
-		Name:              "hana-vm-1",
-		MemoryBytes:       68719476736,
-		VCPUs:             8,
+		Name:             "hana-vm-1",
+		MemoryBytes:      68719476736,
+		VCPUs:            8,
 		NUMAPolicy:       "centered",
 		HugepagesEnabled: true,
 		CPUPinning: map[string]string{
 			"vcpu0": "0", "vcpu1": "1", "vcpu2": "2", "vcpu3": "3",
 			"vcpu4": "4", "vcpu5": "5", "vcpu6": "6", "vcpu7": "7",
 		},
-		DedicatedCPU:     true,
+		DedicatedCPU:      true,
 		BallooningAllowed: false,
 	})
 	if err != nil {
@@ -130,9 +130,9 @@ func TestDualEnforcement_InvalidNoHugepagesFailsAtAPI(t *testing.T) {
 // generates correct XML with all HANA guardrail features.
 func TestDualEnforcement_NodeAgentXML_HANAFeatures(t *testing.T) {
 	xml, err := libvirt.GenerateDomainXML(libvirt.DomainSpec{
-		Name:              "test-hana",
-		MemoryBytes:       137438953472, // 128GiB
-		VCPUs:             16,
+		Name:             "test-hana",
+		MemoryBytes:      137438953472, // 128GiB
+		VCPUs:            16,
 		NUMAPolicy:       "bind",
 		HugepagesEnabled: true,
 		CPUPinning: map[string]string{
@@ -160,10 +160,10 @@ func TestDualEnforcement_NodeAgentXML_NoHugepagesNoNUMA(t *testing.T) {
 		Name:              "generic-vm",
 		MemoryBytes:       8589934592, // 8GiB
 		VCPUs:             4,
-		NUMAPolicy:       "", // no NUMA
-		HugepagesEnabled: false,
-		CPUPinning:       nil,
-		DedicatedCPU:     false,
+		NUMAPolicy:        "", // no NUMA
+		HugepagesEnabled:  false,
+		CPUPinning:        nil,
+		DedicatedCPU:      false,
 		BallooningAllowed: true, // allowed for non-HANA
 	})
 	if err != nil {
@@ -236,10 +236,10 @@ func TestDualEnforcement_NodeAgentXML_BallooningDisabled(t *testing.T) {
 		Name:              "hana-strict",
 		MemoryBytes:       68719476736,
 		VCPUs:             8,
-		NUMAPolicy:       "centered",
-		HugepagesEnabled: true,
-		CPUPinning:       map[string]string{"vcpu0": "0", "vcpu1": "1"},
-		DedicatedCPU:     true,
+		NUMAPolicy:        "centered",
+		HugepagesEnabled:  true,
+		CPUPinning:        map[string]string{"vcpu0": "0", "vcpu1": "1"},
+		DedicatedCPU:      true,
 		BallooningAllowed: false, // HANA enforcement: always false
 	})
 	if err != nil {
@@ -256,10 +256,10 @@ func TestDualEnforcement_NodeAgentXML_DedicatedCPU(t *testing.T) {
 		Name:              "hana-dedicated",
 		MemoryBytes:       68719476736,
 		VCPUs:             4,
-		NUMAPolicy:       "centered",
-		HugepagesEnabled: true,
-		CPUPinning:       map[string]string{"vcpu0": "0"},
-		DedicatedCPU:     true,
+		NUMAPolicy:        "centered",
+		HugepagesEnabled:  true,
+		CPUPinning:        map[string]string{"vcpu0": "0"},
+		DedicatedCPU:      true,
 		BallooningAllowed: false,
 	})
 	if err != nil {

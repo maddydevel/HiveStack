@@ -26,15 +26,15 @@ type Orchestrator interface {
 
 // FailoverRecord tracks the progress of a failover operation.
 type FailoverRecord struct {
-	ID            string    `json:"id"`
-	NodeID        string    `json:"node_id"`
-	State         string    `json:"state"` // "detecting", "fencing", "scheduling", "restarting", "complete", "failed"
-	VMCount       int       `json:"vm_count"`
-	VMRestarted   int       `json:"vm_restarted"`
-	VMFailed      int       `json:"vm_failed"`
-	StartedAt     time.Time `json:"started_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	Error         string    `json:"error,omitempty"`
+	ID          string     `json:"id"`
+	NodeID      string     `json:"node_id"`
+	State       string     `json:"state"` // "detecting", "fencing", "scheduling", "restarting", "complete", "failed"
+	VMCount     int        `json:"vm_count"`
+	VMRestarted int        `json:"vm_restarted"`
+	VMFailed    int        `json:"vm_failed"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 // VMProvider looks up VM details from the data store.

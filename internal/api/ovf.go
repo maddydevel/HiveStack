@@ -13,14 +13,13 @@ const (
 	ovfNamespace = "http://schemas.dmtf.org/ovf/envelope/1"
 )
 
-
 type OVFEnvelope struct {
-	XMLName     xml.Name    `xml:"Envelope"`
-	Namespace   string      `xml:"xmlns,attr,omitempty"`
-	References  References  `xml:"References"`
-	DiskSection *DiskSection `xml:"DiskSection,omitempty"`
-	NetworkSection *NetworkSection `xml:"NetworkSection,omitempty"`
-	VirtualSystem *VirtualSystem `xml:"VirtualSystem,omitempty"`
+	XMLName                 xml.Name                 `xml:"Envelope"`
+	Namespace               string                   `xml:"xmlns,attr,omitempty"`
+	References              References               `xml:"References"`
+	DiskSection             *DiskSection             `xml:"DiskSection,omitempty"`
+	NetworkSection          *NetworkSection          `xml:"NetworkSection,omitempty"`
+	VirtualSystem           *VirtualSystem           `xml:"VirtualSystem,omitempty"`
 	VirtualSystemCollection *VirtualSystemCollection `xml:"VirtualSystemCollection,omitempty"`
 }
 
@@ -31,9 +30,9 @@ type References struct {
 
 // OVFFile represents a file reference in the OVF descriptor.
 type OVFFile struct {
-	ID      string `xml:"id,attr"`
-	Href    string `xml:"href,attr"`
-	Size    uint64 `xml:"size,attr"`
+	ID          string `xml:"id,attr"`
+	Href        string `xml:"href,attr"`
+	Size        uint64 `xml:"size,attr"`
 	Compression string `xml:"compression,attr,omitempty"`
 }
 
@@ -44,11 +43,11 @@ type DiskSection struct {
 
 // OVFDiskInfo describes a virtual disk.
 type OVFDiskInfo struct {
-	DiskID      string `xml:"diskId,attr"`
-	FileRef     string `xml:"fileRef,attr"`
-	Capacity    uint64 `xml:"capacity,attr"`
-	Allocated   uint64 `xml:"populatedSize,attr,omitempty"`
-	Format      string `xml:"format,attr,omitempty"`
+	DiskID    string `xml:"diskId,attr"`
+	FileRef   string `xml:"fileRef,attr"`
+	Capacity  uint64 `xml:"capacity,attr"`
+	Allocated uint64 `xml:"populatedSize,attr,omitempty"`
+	Format    string `xml:"format,attr,omitempty"`
 }
 
 // NetworkSection defines available networks.
@@ -64,19 +63,19 @@ type OVFNetwork struct {
 
 // VirtualSystem defines a single VM.
 type VirtualSystem struct {
-	ID      string `xml:"id,attr"`
-	Name    string `xml:"Name,omitempty"`
-	Info    string `xml:"Info,omitempty"`
-	OperatingSystem *OperatingSystemSection `xml:"OperatingSystemSection,omitempty"`
+	ID              string                   `xml:"id,attr"`
+	Name            string                   `xml:"Name,omitempty"`
+	Info            string                   `xml:"Info,omitempty"`
+	OperatingSystem *OperatingSystemSection  `xml:"OperatingSystemSection,omitempty"`
 	VirtualHardware []VirtualHardwareSection `xml:"VirtualHardwareSection,omitempty"`
-	Product         *ProductSection         `xml:"ProductSection,omitempty"`
+	Product         *ProductSection          `xml:"ProductSection,omitempty"`
 }
 
 // VirtualSystemCollection defines a collection of VMs.
 type VirtualSystemCollection struct {
-	ID           string           `xml:"id,attr"`
-	Name         string           `xml:"Name,omitempty"`
-	Info         string           `xml:"Info,omitempty"`
+	ID             string          `xml:"id,attr"`
+	Name           string          `xml:"Name,omitempty"`
+	Info           string          `xml:"Info,omitempty"`
 	VirtualSystems []VirtualSystem `xml:"VirtualSystem,omitempty"`
 }
 
@@ -89,10 +88,10 @@ type OperatingSystemSection struct {
 
 // VirtualHardwareSection defines VM hardware.
 type VirtualHardwareSection struct {
-	ID       string `xml:"id,attr,omitempty"`
-	Info     string `xml:"Info,omitempty"`
-	System   *VSSDSystem `xml:"System,omitempty"`
-	Items    []RASDItem `xml:"Item,omitempty"`
+	ID     string      `xml:"id,attr,omitempty"`
+	Info   string      `xml:"Info,omitempty"`
+	System *VSSDSystem `xml:"System,omitempty"`
+	Items  []RASDItem  `xml:"Item,omitempty"`
 }
 
 // VSSDSystem describes virtual system type.
@@ -103,24 +102,24 @@ type VSSDSystem struct {
 
 // RASDItem describes a resource allocation setting.
 type RASDItem struct {
-	ResourceType    string  `xml:"ResourceType,omitempty"`
-	InstanceID      string  `xml:"InstanceID,omitempty"`
-	ElementName     string  `xml:"ElementName,omitempty"`
-	Description     string  `xml:"Description,omitempty"`
-	AllocationUnits string  `xml:"AllocationUnits,omitempty"`
-	VirtualQuantity *uint64 `xml:"VirtualQuantity,omitempty"`
-	HostResource    string  `xml:"HostResource,omitempty"`
-	Parent          string  `xml:"Parent,omitempty"`
-	Address         string  `xml:"Address,omitempty"`
-	Connection      string  `xml:"Connection,omitempty"`
-	AutomaticAllocation *bool `xml:"AutomaticAllocation,omitempty"`
+	ResourceType        string  `xml:"ResourceType,omitempty"`
+	InstanceID          string  `xml:"InstanceID,omitempty"`
+	ElementName         string  `xml:"ElementName,omitempty"`
+	Description         string  `xml:"Description,omitempty"`
+	AllocationUnits     string  `xml:"AllocationUnits,omitempty"`
+	VirtualQuantity     *uint64 `xml:"VirtualQuantity,omitempty"`
+	HostResource        string  `xml:"HostResource,omitempty"`
+	Parent              string  `xml:"Parent,omitempty"`
+	Address             string  `xml:"Address,omitempty"`
+	Connection          string  `xml:"Connection,omitempty"`
+	AutomaticAllocation *bool   `xml:"AutomaticAllocation,omitempty"`
 }
 
 // ProductSection contains product metadata.
 type ProductSection struct {
-	Vendor  string `xml:"Vendor,omitempty"`
-	Product string `xml:"Product,omitempty"`
-	Version string `xml:"Version,omitempty"`
+	Vendor      string `xml:"Vendor,omitempty"`
+	Product     string `xml:"Product,omitempty"`
+	Version     string `xml:"Version,omitempty"`
 	FullVersion string `xml:"FullVersion,omitempty"`
 }
 
@@ -154,11 +153,11 @@ var OVFResourceTypes = map[string]string{
 
 // ParsedOVFResult contains the simplified VM information extracted from an OVF.
 type ParsedOVFResult struct {
-	VMs []ParsedVM `json:"vms"`
-	Disks []ParsedDisk `json:"disks"`
-	Networks []string `json:"networks"`
-	RawSize uint64 `json:"raw_size_bytes"`
-	OVFVersion string `json:"ovf_version"`
+	VMs        []ParsedVM   `json:"vms"`
+	Disks      []ParsedDisk `json:"disks"`
+	Networks   []string     `json:"networks"`
+	RawSize    uint64       `json:"raw_size_bytes"`
+	OVFVersion string       `json:"ovf_version"`
 }
 
 // ParsedVM holds simplified VM info extracted from OVF.
@@ -177,10 +176,10 @@ type ParsedVM struct {
 
 // ParsedDisk holds disk info extracted from OVF.
 type ParsedDisk struct {
-	ID         string `json:"id"`
-	FileRef    string `json:"file_ref"`
-	SizeBytes  uint64 `json:"size_bytes"`
-	Format     string `json:"format,omitempty"`
+	ID        string `json:"id"`
+	FileRef   string `json:"file_ref"`
+	SizeBytes uint64 `json:"size_bytes"`
+	Format    string `json:"format,omitempty"`
 }
 
 // ParseOVF parses an OVF XML document and extracts basic VM information.
@@ -197,8 +196,8 @@ func ParseOVF(r io.Reader) (*ParsedOVFResult, error) {
 	}
 
 	result := &ParsedOVFResult{
-		VMs:  make([]ParsedVM, 0),
-		Disks: make([]ParsedDisk, 0),
+		VMs:      make([]ParsedVM, 0),
+		Disks:    make([]ParsedDisk, 0),
 		Networks: make([]string, 0),
 	}
 

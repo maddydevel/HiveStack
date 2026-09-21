@@ -607,11 +607,11 @@ func (d *DB) CreateEvent(ctx context.Context, e *Event) (string, error) {
 func (d *DB) ListEvents(ctx context.Context, tenantID string, limit int) ([]Event, error) {
 	rows, err := d.QueryContext(ctx,
 		"SELECT id, tenant_id, type, severity, message,"+
-		" actor_type, actor_id, actor_name,"+
-		" resource_type, resource_id, resource_name,"+
-		" metadata, created_at"+
-		" FROM event WHERE tenant_id = $1"+
-		" ORDER BY created_at DESC LIMIT $2",
+			" actor_type, actor_id, actor_name,"+
+			" resource_type, resource_id, resource_name,"+
+			" metadata, created_at"+
+			" FROM event WHERE tenant_id = $1"+
+			" ORDER BY created_at DESC LIMIT $2",
 		tenantID, limit)
 	if err != nil {
 		return nil, err
@@ -763,10 +763,10 @@ func (d *DB) CreateDatacenter(ctx context.Context, dc *Datacenter) (string, erro
 	defer tx.Rollback(ctx)
 
 	id, err := NewRecord(ctx, tx, "datacenter", map[string]interface{}{
-		"tenant_id":    dc.TenantID,
-		"name":         dc.Name,
-		"description":  dc.Description,
-		"status":       dc.Status,
+		"tenant_id":   dc.TenantID,
+		"name":        dc.Name,
+		"description": dc.Description,
+		"status":      dc.Status,
 	})
 	if err != nil {
 		return "", err

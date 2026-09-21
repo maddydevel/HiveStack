@@ -29,15 +29,15 @@ type User struct {
 
 // APIToken is a tenant-scoped, scope-limited bearer token that can expire.
 type APIToken struct {
-	ID          string
-	TenantID    string
-	UserID      string
-	Name        string
-	TokenHash   string
-	Scopes      []string
-	ExpiresAt   *time.Time
-	LastUsedAt  *time.Time
-	CreatedAt   time.Time
+	ID         string
+	TenantID   string
+	UserID     string
+	Name       string
+	TokenHash  string
+	Scopes     []string
+	ExpiresAt  *time.Time
+	LastUsedAt *time.Time
+	CreatedAt  time.Time
 }
 
 // Datacenter is a top-level tenant-scoped inventory grouping.
@@ -102,32 +102,32 @@ const (
 // configuration; for generic VMs they are typically left at permissive
 // defaults.
 type VM struct {
-	ID              string
-	TenantID        string
-	ClusterID       *string
-	HostID          *string
-	Identifier      string
-	Name            string
-	Description     string
-	Status          string
-	Role            VMRole
-	CPUs            int
-	CPUAllocation   string
-	MemoryBytes     int64
+	ID            string
+	TenantID      string
+	ClusterID     *string
+	HostID        *string
+	Identifier    string
+	Name          string
+	Description   string
+	Status        string
+	Role          VMRole
+	CPUs          int
+	CPUAllocation string
+	MemoryBytes   int64
 
-	NUMAPolicy              *string
-	HugepagesEnabled        bool
-	CPUPinning              []byte // raw JSON, e.g. {"vcpu0":"0",...}
-	MemoryReservationBytes  int64
-	BallooningAllowed       bool
-	SwapAllowed             bool
+	NUMAPolicy             *string
+	HugepagesEnabled       bool
+	CPUPinning             []byte // raw JSON, e.g. {"vcpu0":"0",...}
+	MemoryReservationBytes int64
+	BallooningAllowed      bool
+	SwapAllowed            bool
 
-	OS             string
-	TemplateID     *string
-	SnapshotCount  int
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	UpdatedAt      time.Time
+	OS            string
+	TemplateID    *string
+	SnapshotCount int
+	CreatedAt     time.Time
+	StartedAt     *time.Time
+	UpdatedAt     time.Time
 }
 
 // StoragePool is a tenant-scoped storage backend.
@@ -168,37 +168,37 @@ type Network struct {
 
 // Disk is a virtual disk, optionally attached to a VM.
 type Disk struct {
-	ID             string
-	TenantID       string
-	VMID           *string
-	StoragePoolID  *string
-	Name           string
-	SizeBytes      int64
-	Format         string
-	Path           string
-	Bus            string
-	Mounted        bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID            string
+	TenantID      string
+	VMID          *string
+	StoragePoolID *string
+	Name          string
+	SizeBytes     int64
+	Format        string
+	Path          string
+	Bus           string
+	Mounted       bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Backup is a point-in-time backup job/record for a VM.
 type Backup struct {
-	ID           string
-	TenantID     string
-	VMID         string
-	Name         string
-	Status       string
-	Type         string
-	StoragePath  string
-	SizeBytes    int64
-	Progress     int
-	Message      string
-	ScheduleID   *string
-	StartedAt    *time.Time
-	CompletedAt  *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID          string
+	TenantID    string
+	VMID        string
+	Name        string
+	Status      string
+	Type        string
+	StoragePath string
+	SizeBytes   int64
+	Progress    int
+	Message     string
+	ScheduleID  *string
+	StartedAt   *time.Time
+	CompletedAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // Snapshot is a VM disk-state snapshot.
@@ -218,16 +218,16 @@ type Snapshot struct {
 // genesis value for the first row); hash commits to previous_hash plus this
 // row's own content, making the chain tamper-evident.
 type ComplianceEvidence struct {
-	ID            string
-	TenantID      string
-	VMID          string
-	CheckType     string
-	CheckResult   []byte // raw JSON
-	Passed        bool
-	Evidence      []byte // raw JSON
-	PreviousHash  string
-	Hash          string
-	CreatedAt     time.Time
+	ID           string
+	TenantID     string
+	VMID         string
+	CheckType    string
+	CheckResult  []byte // raw JSON
+	Passed       bool
+	Evidence     []byte // raw JSON
+	PreviousHash string
+	Hash         string
+	CreatedAt    time.Time
 }
 
 // Event is a tenant-scoped, append-only audit log entry.

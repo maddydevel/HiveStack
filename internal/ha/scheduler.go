@@ -12,28 +12,28 @@ import (
 
 // NUMANode represents a single NUMA domain on a host.
 type NUMANode struct {
-	ID           int     `json:"id"`
-	CPUCores     []int   `json:"cpu_cores"`
-	MemoryBytes  int64   `json:"memory_bytes"`
-	FreeMemory   int64   `json:"free_memory"`
-	PinnedCPUs   []int   `json:"pinned_cpus"`
+	ID          int   `json:"id"`
+	CPUCores    []int `json:"cpu_cores"`
+	MemoryBytes int64 `json:"memory_bytes"`
+	FreeMemory  int64 `json:"free_memory"`
+	PinnedCPUs  []int `json:"pinned_cpus"`
 }
 
 // Host describes a target host for VM placement decisions.
 type Host struct {
-	ID                string      `json:"id"`
-	Name              string      `json:"name"`
-	Hostname          string      `json:"hostname"`
-	Status            string      `json:"status"`
-	CPUCount          int         `json:"cpu_count"`
-	MemoryTotalBytes  int64       `json:"memory_total_bytes"`
-	MemoryUsedBytes   int64       `json:"memory_used_bytes"`
-	NUMANodeCount     int         `json:"numa_node_count"`
-	NUMANodes         []NUMANode  `json:"numa_nodes,omitempty"`
-	VMCount           int         `json:"vm_count"`
-	Labels            map[string]string `json:"labels,omitempty"`
-	MaintenanceMode   bool        `json:"maintenance_mode"`
-	CurrentVMs        []string    `json:"current_vms"`
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Hostname         string            `json:"hostname"`
+	Status           string            `json:"status"`
+	CPUCount         int               `json:"cpu_count"`
+	MemoryTotalBytes int64             `json:"memory_total_bytes"`
+	MemoryUsedBytes  int64             `json:"memory_used_bytes"`
+	NUMANodeCount    int               `json:"numa_node_count"`
+	NUMANodes        []NUMANode        `json:"numa_nodes,omitempty"`
+	VMCount          int               `json:"vm_count"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	MaintenanceMode  bool              `json:"maintenance_mode"`
+	CurrentVMs       []string          `json:"current_vms"`
 }
 
 // AvailableMemory returns remaining memory for new VMs.
@@ -66,32 +66,32 @@ func (h *Host) CanFit(cpu int, memory int64) bool {
 
 // VM describes a VM to be placed on a target host.
 type VM struct {
-	ID                      string            `json:"id"`
-	Name                    string            `json:"name"`
-	HostID                  string            `json:"host_id"`
-	CPUs                    int               `json:"cpus"`
-	MemoryBytes             int64             `json:"memory_bytes"`
-	NUMAPolicy              *string           `json:"numa_policy,omitempty"`
-	HugepagesEnabled        bool              `json:"hugepages_enabled"`
-	NUMAAffinity            *int              `json:"numa_affinity,omitempty"` // Preferred NUMA node
-	AntiAffinity            []string          `json:"anti_affinity"`          // VM IDs that must not co-locate
-	PreferredHost           *string           `json:"preferred_host"`
-	Labels                  map[string]string `json:"labels,omitempty"`
-	Role                    string            `json:"role"`
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	HostID           string            `json:"host_id"`
+	CPUs             int               `json:"cpus"`
+	MemoryBytes      int64             `json:"memory_bytes"`
+	NUMAPolicy       *string           `json:"numa_policy,omitempty"`
+	HugepagesEnabled bool              `json:"hugepages_enabled"`
+	NUMAAffinity     *int              `json:"numa_affinity,omitempty"` // Preferred NUMA node
+	AntiAffinity     []string          `json:"anti_affinity"`           // VM IDs that must not co-locate
+	PreferredHost    *string           `json:"preferred_host"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	Role             string            `json:"role"`
 }
 
 // Policy describes the scheduling policy for host selection.
 type Policy struct {
-	PolicyType           string  `json:"policy_type"`            // "binpack", "spread", "numa-aware"
-	PreferSameNUMANode   bool    `json:"prefer_same_numa_node"`
-	MaxOvercommitRatio   float64 `json:"max_overcommit_ratio"`
-	LoadBalanceWeight    float64 `json:"load_balance_weight"`    // 0-1, higher = prefer less loaded hosts
-	NUMAAffinityWeight   float64 `json:"numa_affinity_weight"`   // 0-1, higher = prefer NUMA-aligned
-	AntiAffinityEnabled  bool    `json:"anti_affinity_enabled"`
+	PolicyType          string  `json:"policy_type"` // "binpack", "spread", "numa-aware"
+	PreferSameNUMANode  bool    `json:"prefer_same_numa_node"`
+	MaxOvercommitRatio  float64 `json:"max_overcommit_ratio"`
+	LoadBalanceWeight   float64 `json:"load_balance_weight"`  // 0-1, higher = prefer less loaded hosts
+	NUMAAffinityWeight  float64 `json:"numa_affinity_weight"` // 0-1, higher = prefer NUMA-aligned
+	AntiAffinityEnabled bool    `json:"anti_affinity_enabled"`
 }
 
 // DefaultPolicy returns a sensible default scheduling policy.
-func DefaultPolicy() Policy{
+func DefaultPolicy() Policy {
 	return Policy{
 		PolicyType:          "spread",
 		PreferSameNUMANode:  true,
@@ -291,16 +291,16 @@ func (s *DefaultScheduler) filterHosts(vm VM, hosts []Host, policy Policy) []Hos
 
 // SchedulingDecision captures the result of a scheduling operation.
 type SchedulingDecision struct {
-	VMID     string `json:"vm_id"`
-	VMName   string `json:"vm_name"`
-	HostID   string `json:"host_id"`
-	HostName string `json:"host_name"`
+	VMID     string  `json:"vm_id"`
+	VMName   string  `json:"vm_name"`
+	HostID   string  `json:"host_id"`
+	HostName string  `json:"host_name"`
 	Score    float64 `json:"score"`
 }
 
 // ScheduleResult contains all decisions from a scheduling run.
 type ScheduleResult struct {
 	Decisions []SchedulingDecision `json:"decisions"`
-	Success   bool                `json:"success"`
-	Error     string              `json:"error,omitempty"`
+	Success   bool                 `json:"success"`
+	Error     string               `json:"error,omitempty"`
 }

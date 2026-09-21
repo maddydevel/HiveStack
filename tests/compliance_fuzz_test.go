@@ -39,7 +39,7 @@ func randomNUMAPolicy() *string {
 func generateRandomVMProfile() *compliance.VMProfile {
 	profile := &compliance.VMProfile{
 		Role:                   randomRole(),
-		CPUs:                   rand.Intn(256),          // 0-255
+		CPUs:                   rand.Intn(256), // 0-255
 		CPUAllocation:          randomString(10, "abcdefghijklmnopqrstuvwxyz"),
 		MemoryBytes:            int64(rand.Int63n(1 << 40)), // up to 1TiB
 		NUMAPolicy:             randomNUMAPolicy(),
@@ -619,5 +619,3 @@ func TestFuzzValidateHANAProfile_CompliantRandom(t *testing.T) {
 		}
 	}
 }
-
-
