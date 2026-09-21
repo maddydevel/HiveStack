@@ -13,7 +13,7 @@
 # ============================================================================
 # Stage 1: Build
 # ============================================================================
-FROM golang:1.23-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 ARG VERSION=0.1.0
 ARG BUILD_DATE=unknown
