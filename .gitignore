@@ -18,3 +18,8 @@ Thumbs.db
 *.env
 *.key
 *.pem
+build/
+dist/
+*.iso
+*.img
+*.qcow2
