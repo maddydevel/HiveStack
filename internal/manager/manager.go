@@ -12,7 +12,7 @@ package manager
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -152,7 +152,7 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
 	m.running = true
 	m.mu.Unlock()
 
-	log.Println("HiveStack Manager starting...")
+	slog.InfoContext(ctx, "manager starting")
 
 	// Start the HA service before the API server so HA data is available
 	if err := m.haSvc.Start(ctx); err != nil {
@@ -198,20 +198,20 @@ func (m *Manager) Run(ctx context.Context, apiAddr string) error {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		log.Printf("API server listening on %s", apiAddr)
+		slog.InfoContext(ctx, "API server listening", "addr", apiAddr)
 		if err := apiServer.Run(); err != nil && err != context.Canceled {
-			log.Printf("API server error: %v", err)
+			slog.ErrorContext(ctx, "API server error", "err", err)
 		}
 	}()
 
-	log.Println("HiveStack Manager running — API server active, RBAC engine loaded, compliance store ready")
+	slog.InfoContext(ctx, "manager running: API server active, RBAC engine loaded, compliance store ready")
 
 	<-ctx.Done()
-	log.Println("Manager: shutdown signal received")
+	slog.InfoContext(ctx, "manager shutdown signal received")
 	close(m.shutdownCh)
 
 	m.wg.Wait()
-	log.Println("Manager: stopped")
+	slog.Info("manager stopped")
 	return nil
 }
 
@@ -228,6 +228,26 @@ func (m *Manager) Compliance() *compliance.ComplianceStore {
 // DB returns the database connection.
 func (m *Manager) DB() *db.DB {
 	return m.db
+}
+
+// logFor returns a logger carrying the caller's identity for structured
+// server-side logs. user_id and, unless tenantID is given, tenant_id come from
+// the JWT claims in ctx when present; a non-empty tenantID (typically taken
+// from the record being operated on) takes precedence.
+func logFor(ctx context.Context, tenantID string) *slog.Logger {
+	l := slog.Default()
+	if claims, ok := auth.ClaimsFromContext(ctx); ok && claims != nil {
+		if tenantID == "" {
+			tenantID = claims.TenantID
+		}
+		if claims.UserID != "" {
+			l = l.With("user_id", claims.UserID)
+		}
+	}
+	if tenantID != "" {
+		l = l.With("tenant_id", tenantID)
+	}
+	return l
 }
 
 // roleFromContext extracts the role name from the context.
@@ -330,10 +350,10 @@ func (m *Manager) CreateHost(ctx context.Context, name, hostname, ip, tan, label
 
 	eventMsg := fmt.Sprintf("Host registered: %s (%s)", name, hostname)
 	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, name, "host", id, name); err != nil {
-		log.Printf("Warning: failed to publish HostRegistered event: %v", err)
+		logFor(ctx, "").Warn("failed to publish HostRegistered event", "host_id", id, "err", err)
 	}
 
-	log.Printf("Host created: %s (id=%s)", name, id)
+	logFor(ctx, "").Info("host created", "host_id", id, "name", name)
 	return id, nil
 }
 
@@ -390,14 +410,14 @@ func (m *Manager) UpdateHost(ctx context.Context, id string, updates map[string]
 		}
 		// Log maintenance mode change
 		newMode := updates["maintenance_mode"].(bool)
-		log.Printf("Host %s maintenance mode: %v -> %v", existing.Name, existing.MaintenanceMode, newMode)
+		logFor(ctx, existing.TenantID).Info("host maintenance mode changed", "host_id", id, "name", existing.Name, "from", existing.MaintenanceMode, "to", newMode)
 	}
 
 	if err := m.store.UpdateHost(ctx, id, updates); err != nil {
 		return fmt.Errorf("update host: %w", err)
 	}
 
-	log.Printf("Host updated: %s", id)
+	logFor(ctx, "").Info("host updated", "host_id", id)
 	return nil
 }
 
@@ -444,10 +464,10 @@ func (m *Manager) DeleteHost(ctx context.Context, id string) error {
 	// Publish event
 	eventMsg := fmt.Sprintf("Host decommissioned: %s", host.Name)
 	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, host.Name, "host", id, host.Name); err != nil {
-		log.Printf("Warning: failed to publish HostDecommissioned event: %v", err)
+		logFor(ctx, host.TenantID).Warn("failed to publish HostDecommissioned event", "host_id", id, "err", err)
 	}
 
-	log.Printf("Host deleted: %s (id=%s)", host.Name, id)
+	logFor(ctx, host.TenantID).Info("host deleted", "host_id", id, "name", host.Name)
 	return nil
 }
 
@@ -569,7 +589,7 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate libvirt XML: %w", err)
 	}
-	log.Printf("msg=%q vm=%s xml_bytes=%d", "libvirt domain XML generated", spec.Name, len(domainXML))
+	slog.DebugContext(ctx, "libvirt domain XML generated", "vm_name", spec.Name, "xml_bytes", len(domainXML))
 
 	// Insert VM record
 	vm := &db.VM{
@@ -605,16 +625,16 @@ func (m *Manager) CreateVM(ctx context.Context, spec VMSpec) (string, error) {
 		return "", err
 	}
 
-	log.Printf("Resources allocated for VM %s on host %s: %d vCPUs, %d bytes memory (remaining: %d CPUs, %d bytes memory)",
-		spec.Name, host.Name, spec.CPUS, spec.MemoryBytes, remainingCPUs, remainingMemory)
+	logFor(ctx, host.TenantID).Info("VM resources allocated", "vm_name", spec.Name, "host_id", host.ID, "host_name", host.Name,
+		"vcpus", spec.CPUS, "memory_bytes", spec.MemoryBytes, "remaining_cpus", remainingCPUs, "remaining_memory_bytes", remainingMemory)
 
 	// Publish event
 	eventMsg := fmt.Sprintf("VM created: %s (id=%s, host=%s)", spec.Name, id, host.Name)
 	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, spec.Name, "vm", id, spec.Name); err != nil {
-		log.Printf("Warning: failed to publish VMCSreated event: %v", err)
+		logFor(ctx, host.TenantID).Warn("failed to publish VMCreated event", "vm_id", id, "err", err)
 	}
 
-	log.Printf("VM created: %s (id=%s)", spec.Name, id)
+	logFor(ctx, host.TenantID).Info("VM created", "vm_id", id, "vm_name", spec.Name, "host_id", host.ID)
 	return id, nil
 }
 
@@ -710,7 +730,7 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"status": "running",
 	}); err != nil {
-		log.Printf("Warning: failed to update VM status: %v", err)
+		logFor(ctx, vm.TenantID).Warn("failed to update VM status", "vm_id", id, "status", "running", "err", err)
 	}
 
 	// Update started_at timestamp
@@ -718,10 +738,10 @@ func (m *Manager) StartVM(ctx context.Context, id string) error {
 	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"started_at": now,
 	}); err != nil {
-		log.Printf("Warning: failed to update started_at: %v", err)
+		logFor(ctx, vm.TenantID).Warn("failed to update VM started_at", "vm_id", id, "err", err)
 	}
 
-	log.Printf("VM started: %s (id=%s)", vm.Name, id)
+	logFor(ctx, vm.TenantID).Info("VM started", "vm_id", id, "vm_name", vm.Name, "host_id", hostID)
 	return nil
 }
 
@@ -764,10 +784,10 @@ func (m *Manager) StopVM(ctx context.Context, id string) error {
 	if err := m.store.UpdateVM(ctx, id, map[string]interface{}{
 		"status": "stopped",
 	}); err != nil {
-		log.Printf("Warning: failed to update VM status: %v", err)
+		logFor(ctx, vm.TenantID).Warn("failed to update VM status", "vm_id", id, "status", "stopped", "err", err)
 	}
 
-	log.Printf("VM stopped: %s (id=%s)", vm.Name, id)
+	logFor(ctx, vm.TenantID).Info("VM stopped", "vm_id", id, "vm_name", vm.Name, "host_id", hostID)
 	return nil
 }
 
@@ -794,7 +814,7 @@ func (m *Manager) RestartVM(ctx context.Context, id string) error {
 	if vm != nil {
 		vmName = vm.Name
 	}
-	log.Printf("VM restarted: %s (id=%s)", vmName, id)
+	logFor(ctx, "").Info("VM restarted", "vm_id", id, "vm_name", vmName)
 	return nil
 }
 
@@ -841,10 +861,10 @@ func (m *Manager) DeleteVM(ctx context.Context, id string) error {
 	// Publish event
 	eventMsg := fmt.Sprintf("VM deleted: %s (id=%s)", vm.Name, id)
 	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, vm.Name, "vm", id, vm.Name); err != nil {
-		log.Printf("Warning: failed to publish VMDeleted event: %v", err)
+		logFor(ctx, vm.TenantID).Warn("failed to publish VMDeleted event", "vm_id", id, "err", err)
 	}
 
-	log.Printf("VM deleted: %s (id=%s)", vm.Name, id)
+	logFor(ctx, vm.TenantID).Info("VM deleted", "vm_id", id, "vm_name", vm.Name)
 	return nil
 }
 
@@ -978,7 +998,7 @@ func (m *Manager) MigrateVM(ctx context.Context, id, targetHostID string) error 
 		return fmt.Errorf("mark VM migrating: %w", err)
 	}
 
-	log.Printf("Migrating VM %s (id=%s) from host %s to host %s", vm.Name, id, sourceHostID, targetHost.Name)
+	logFor(ctx, vm.TenantID).Info("migrating VM", "vm_id", id, "vm_name", vm.Name, "source_host_id", sourceHostID, "target_host_id", targetHost.ID, "target_host_name", targetHost.Name)
 
 	if err := migrator.MigrateVM(ctx, id, targetAddr); err != nil {
 		rbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), migrationTimeout)
@@ -1002,10 +1022,10 @@ func (m *Manager) MigrateVM(ctx context.Context, id, targetHostID string) error 
 
 	eventMsg := fmt.Sprintf("VM migrated: %s (id=%s) from host %s to host %s", vm.Name, id, sourceHostID, targetHost.Name)
 	if err := m.publishEvent(ctx, "", "info", eventMsg, "system", id, vm.Name, "vm", id, vm.Name); err != nil {
-		log.Printf("Warning: failed to publish VMMigrated event: %v", err)
+		logFor(ctx, vm.TenantID).Warn("failed to publish VMMigrated event", "vm_id", id, "err", err)
 	}
 
-	log.Printf("VM migrated: %s (id=%s) to host %s", vm.Name, id, targetHost.Name)
+	logFor(ctx, vm.TenantID).Info("VM migrated", "vm_id", id, "vm_name", vm.Name, "target_host_id", targetHost.ID, "target_host_name", targetHost.Name)
 	return nil
 }
 
@@ -1074,7 +1094,7 @@ func (m *Manager) RegisterNode(id string, agent *node.Agent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.nodes[id] = agent
-	log.Printf("Node registered: %s", id)
+	slog.Info("node registered", "node_id", id)
 }
 
 // RegisterNodeController registers a VMController, typically a *node.Client
@@ -1085,7 +1105,7 @@ func (m *Manager) RegisterNodeController(id string, ctrl node.VMController) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.controllers[id] = ctrl
-	log.Printf("Node controller registered: %s", id)
+	slog.Info("node controller registered", "node_id", id)
 }
 
 // vmController returns the VMController for the node hostID: the registered
@@ -1108,7 +1128,7 @@ func (m *Manager) UnregisterNode(id string) {
 	defer m.mu.Unlock()
 	delete(m.nodes, id)
 	delete(m.controllers, id)
-	log.Printf("Node unregistered: %s", id)
+	slog.Info("node unregistered", "node_id", id)
 }
 
 // ListNodes returns all registered node agents.
@@ -1138,13 +1158,13 @@ func (m *Manager) UpdateNodeStatus(ctx context.Context, nodeID string, status st
 
 	// Update last heartbeat using node agent's status reporting
 	// The node agent's running state and host info serve as our status indicator
-	log.Printf("Node %s status check: attempting ListVMs as health probe", nodeID)
+	logFor(ctx, "").Debug("node status check: probing with ListVMs", "node_id", nodeID)
 	_, err := agent.ListVMs(ctx)
 	if err != nil {
-		log.Printf("Node %s may be unhealthy: %v", nodeID, err)
+		logFor(ctx, "").Warn("node may be unhealthy", "node_id", nodeID, "err", err)
 	}
 
-	log.Printf("Node %s status updated: %s (health check performed)", nodeID, status)
+	logFor(ctx, "").Info("node status updated", "node_id", nodeID, "status", status)
 	return nil
 }
 
@@ -1293,7 +1313,7 @@ func (m *Manager) CreateNetwork(ctx context.Context, n *db.Network) (string, err
 		return "", fmt.Errorf("create network record: %w", err)
 	}
 
-	log.Printf("Network created: %s (id=%s, tenant=%s)", n.Name, id, n.TenantID)
+	logFor(ctx, n.TenantID).Info("network created", "network_id", id, "name", n.Name)
 	return id, nil
 }
 
@@ -1313,7 +1333,7 @@ func (m *Manager) DeleteNetwork(ctx context.Context, id string) error {
 		return fmt.Errorf("delete network record: %w", err)
 	}
 
-	log.Printf("Network deleted: %s (id=%s)", n.Name, id)
+	logFor(ctx, n.TenantID).Info("network deleted", "network_id", id, "name", n.Name)
 	return nil
 }
 
@@ -1424,6 +1444,6 @@ func (m *Manager) ResizeDisk(ctx context.Context, diskID string, newSizeBytes in
 		return fmt.Errorf("update disk size: %w", err)
 	}
 
-	log.Printf("Disk %s resized to %d bytes", diskID, newSizeBytes)
+	logFor(ctx, "").Info("disk resized", "disk_id", diskID, "size_bytes", newSizeBytes)
 	return nil
 }
