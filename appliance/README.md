@@ -1,8 +1,81 @@
-# HiveStack Appliance Build Documentation
+# HiveStack Appliance
 
-## Overview
+Bootable appliance images for HiveStack — the KVM hypervisor management platform.
 
-This directory contains the KIWI appliance description for building a SUSE SLES 15 SP7 based ISO image with HiveStack pre-installed, plus container build files for Docker/Podman deployment.
+## Build Formats
+
+| Format | Directory | Use |
+|--------|-----------|-----|
+| Packer (QCOW2/VMDK/OVA) | `packer/` | VM deployment (VMware, KVM, VirtualBox) |
+| Live-build ISO | `live-build/` | Bare-metal installation, USB boot |
+| Docker | `docker/` | Container deployment, evaluation |
+| Helm Chart | `helm/` | Kubernetes deployment |
+
+## Quick Start
+
+```bash
+# Docker (easiest)
+cd docker && docker compose -f docker-compose.appliance.yml up -d
+
+# Packer (VM images)
+cd packer && packer build hivestack.pkr.hcl
+
+# Live-build (bootable ISO)
+cd live-build && sudo ./build-iso.sh
+```
+
+See [BUILD.md](BUILD.md) for detailed instructions.
+
+## Architecture
+
+- **Base:** Ubuntu 24.04 LTS
+- **Virtualization:** KVM/QEMU/libvirt
+- **Database:** PostgreSQL 15
+- **Services:** Manager (REST API + gRPC), Node Agent
+- **Security:** mTLS, JWT, RBAC
+
+## First Boot
+
+The appliance automatically:
+1. Initializes PostgreSQL with HiveStack schema
+2. Generates TLS certificates (CA, server, client)
+3. Creates manager/node configuration
+4. Runs database migrations
+5. Configures libvirt storage and networking
+6. Sets up hugepages for HANA VMs
+7. Starts all services
+
+Access: `https://<ip>:8443` (Web UI), `https://<ip>:8080/api/v1/health` (Health)
+
+## Ports
+
+| Port | Service |
+|------|---------|
+| 8080 | HTTP API |
+| 8443 | HTTPS API + gRPC |
+| 44567 | Manager gRPC |
+| 5432 | PostgreSQL |
+| 9090 | Cockpit Web UI |
+| 9100 | Prometheus Metrics |
+
+## Post-Installation Security
+
+- [ ] Change default database password
+- [ ] Change JWT secret (32+ random chars)
+- [ ] Regenerate TLS certificates
+- [ ] Set root password
+- [ ] Configure firewall
+- [ ] Enable automatic security updates
+
+## License
+
+Apache 2.0 — Copyright 2026 Maddy AI Consultancy
+
+## Support
+
+- GitHub: https://github.com/maddydevel/HiveStack
+- Issues: https://github.com/maddydevel/HiveStack/issues
+- Security: security@hivestack.io
 
 ## Project Structure
 

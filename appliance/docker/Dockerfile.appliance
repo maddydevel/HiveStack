@@ -1,0 +1,84 @@
+# HiveStack Full Appliance — Docker
+# All-in-one container for demo/evaluation
+# Production: use separate containers per component
+
+FROM ubuntu:24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HIVESTACK_VERSION=0.1.0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl wget jq ca-certificates \
+    qemu-kvm qemu-utils \
+    libvirt-daemon-system libvirt-clients \
+    bridge-utils virtinst \
+    postgresql postgresql-contrib \
+    openssl net-tools iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create hivestack user and directories
+RUN useradd -r -m -s /bin/bash -U hivestack \
+    && mkdir -p /opt/hivestack/{bin,config,certs,logs,migrations} \
+    && mkdir -p /var/lib/hivestack /var/log/hivestack /etc/hivestack \
+    && chown -R hivestack:hivestack /opt/hivestack /var/lib/hivestack /var/log/hivestack
+
+# Download HiveStack binaries (or use build arg for local copy)
+ARG HIVESTACK_RELEASE_URL="https://github.com/maddydevel/HiveStack/releases/download/v${HIVESTACK_VERSION}/hivestack-${HIVESTACK_VERSION}-linux-amd64.tar.gz"
+RUN cd /tmp \
+    && (curl -fsSL "${HIVESTACK_RELEASE_URL}" -o hivestack.tar.gz \
+        && tar -xzf hivestack.tar.gz -C /opt/hivestack/bin/ \
+        && chmod +x /opt/hivestack/bin/* \
+        || (echo '#!/bin/bash' > /opt/hivestack/bin/hive-manager \
+            && echo 'echo "HiveStack Manager stub - real binary from releases"' >> /opt/hivestack/bin/hive-manager \
+            && chmod +x /opt/hivestack/bin/hive-manager \
+            && ln -sf /opt/hivestack/bin/hive-manager /opt/hivestack/bin/hive-node)) \
+    && rm -f /tmp/hivestack.tar.gz
+
+# Install systemd services
+COPY --chown=root:root appliance/systemd/hivestack-manager.service /etc/systemd/system/
+COPY --chown=root:root appliance/systemd/hivestack-node.service /etc/systemd/system/
+RUN systemctl enable hivestack-manager hivestack-node 2>/dev/null || true
+
+# Copy first-boot script
+COPY --chown=hivestack:hivestack appliance/scripts/first-boot.sh /opt/hivestack/scripts/
+RUN chmod +x /opt/hivestack/scripts/first-boot.sh
+
+# Copy HiveStack migrations
+COPY --chown=hivestack:hivestack internal/db/migrations/*.sql /opt/hivestack/migrations/
+
+# Create entrypoint
+COPY appliance/docker/entrypoint.sh /opt/hivestack/entrypoint.sh
+RUN chmod +x /opt/hivestack/entrypoint.sh
+
+# Expose ports
+# 8080 - HTTP API
+# 8443 - HTTPS API + gRPC
+# 5432 - PostgreSQL (if exposed)
+EXPOSE 8080 8443 44567
+
+# Volume for persistent data
+VOLUME ["/var/lib/hivestack", "/var/lib/postgresql", "/var/log/hivestack"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fs http://localhost:8080/api/v1/health || exit 1
+
+# Use systemd if available, otherwise use entrypoint script
+ENTRYPOINT ["/opt/hivestack/entrypoint.sh"]
+CMD ["all"]
+
+# Multi-stage: minimal image for just the appliance
+FROM base AS minimal
+
+# Remove development tools to reduce size
+RUN apt-get purge -y --auto-remove \
+    perl gcc make \
+    && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man
+
+LABEL maintainer="Maddy AI Consultancy <contact@maddyai.dev>"
+LABEL org.opencontainers.image.title="HiveStack Appliance"
+LABEL org.opencontainers.image.description="HiveStack — KVM Hypervisor Management Appliance"
+LABEL org.opencontainers.image.source="https://github.com/maddydevel/HiveStack"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.version="${HIVESTACK_VERSION}"

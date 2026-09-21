@@ -1,0 +1,50 @@
+# HiveStack Appliance - Package List
+
+# Base system
+ubuntu-standard
+linux-generic
+grub-efi-amd64
+grub-efi-amd64-signed
+shim-signed
+
+# Virtualization
+qemu-kvm
+qemu-utils
+libvirt-daemon-system
+libvirt-clients
+bridge-utils
+virtinst
+virt-manager
+libguestfs-tools
+
+# Database
+postgresql
+postgresql-contrib
+
+# Networking
+bridge-utils
+vlan
+openvswitch-switch
+openvswitch-common
+
+# Utilities
+curl
+wget
+git
+jq
+net-tools
+iproute2
+ethtool
+nfs-common
+open-iscsi
+lvm2
+thin-provisioning-tools
+
+# Security
+ufw
+openssl
+ca-certificates
+fail2ban
+
+# Monitoring
+prometheus-node-exporter

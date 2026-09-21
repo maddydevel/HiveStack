@@ -1,0 +1,24 @@
+#!/bin/bash
+# Hook: Configure HiveStack first-boot on the live system
+
+# Copy first-boot script
+cp /config/includes.chroot/etc/hivestack/first-boot.sh /usr/local/bin/hivestack-first-boot 2>/dev/null || true
+chmod +x /usr/local/bin/hivestack-first-boot
+
+# Create systemd service
+cat > /etc/systemd/system/hivestack-first-boot.service <<SERVICEEOF
+[Unit]
+Description=HiveStack First Boot Setup
+After=network.target
+ConditionPathExists=!/var/lib/hivestack/.first-boot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hivestack-first-boot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+
+systemctl enable hivestack-first-boot

@@ -1,0 +1,98 @@
+# HiveStack Appliance - Docker Compose
+# Full stack: PostgreSQL + Manager + Node Agent
+#
+# Usage:
+#   docker compose -f appliance/docker/docker-compose.appliance.yml up -d
+#
+# Production: Use separate containers per component
+
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hivestack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hivestack
+      POSTGRES_USER: hivestack
+      POSTGRES_PASSWORD: <REDACTED>
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - hivestack-pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hivestack -d hivestack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hivestack-net
+
+  manager:
+    build:
+      context: ../..
+      dockerfile: appliance/docker/Dockerfile.appliance
+    container_name: hivestack-manager
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HIVESTACK_DSN: "postgres://hivestack:hivestack@postgres:5432/hivestack?sslmode=disable"
+      HIVESTACK_JWT_SECRET: ""
+      HIVESTACK_LOG_LEVEL: "info"
+    volumes:
+      - hivestack-certs:/etc/hivestack/certs
+      - hivestack-data:/var/lib/hivestack
+      - hivestack-logs:/var/log/hivestack
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+      - "44567:44567"
+    networks:
+      - hivestack-net
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  node:
+    build:
+      context: ../..
+      dockerfile: appliance/docker/Dockerfile.appliance
+    container_name: hivestack-node
+    restart: unless-stopped
+    privileged: true
+    depends_on:
+      - manager
+    environment:
+      HIVESTACK_NODE_ID: "node-001"
+      HIVESTACK_MANAGER_ADDRESS: "manager:44567"
+      HIVESTACK_LOG_LEVEL: "info"
+    volumes:
+      - hivestack-certs:/etc/hivestack/certs:ro
+      - /var/run/libvirt:/var/run/libvirt:ro
+      - /dev:/dev
+    networks:
+      - hivestack-net
+    command: ["node"]
+
+volumes:
+  hivestack-pg-data:
+    driver: local
+  hivestack-certs:
+    driver: local
+  hivestack-data:
+    driver: local
+  hivestack-logs:
+    driver: local
+
+networks:
+  hivestack-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

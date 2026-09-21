@@ -1,0 +1,252 @@
+name: Release Appliance
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GO_VERSION: "1.23"
+
+jobs:
+  # Build Go binaries
+  build-binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          OUTPUT="hivestack-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          
+          go build -ldflags="-w -s -X main.version=${VERSION}" \
+            -o "dist/${OUTPUT}/hive-manager" ./cmd/hive-manager
+          go build -ldflags="-w -s -X main.version=${VERSION}" \
+            -o "dist/${OUTPUT}/hive-node" ./node/
+          go build -ldflags="-w -s -X main.version=${VERSION}" \
+            -o "dist/${OUTPUT}/hive" ./cmd/hive
+          
+          cd dist
+          tar -czf "${OUTPUT}.tar.gz" "${OUTPUT}"
+          sha256sum "${OUTPUT}.tar.gz" >> checksums.txt
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
+          retention-days: 1
+
+  # Build Docker appliance
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: <_REDACTED> secrets.GITHUB_TOKEN
+      
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: appliance/docker/Dockerfile.appliance
+          push: true
+          tags: |
+            ghcr.io/maddydevel/hivestack:${{ github.ref_name }}
+            ghcr.io/maddydevel/hivestack:latest
+          build-args: |
+            HIVESTACK_VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build VM images (QCOW2, VMDK, OVA)
+  build-vm-images:
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Install Packer
+        run: |
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+          sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+          sudo apt-get update && sudo apt-get install -y packer
+      
+      - name: Install QEMU
+        run: |
+          sudo apt-get install -y qemu-system-x86 qemu-utils
+      
+      - name: Build VM images
+        run: |
+          cd appliance/packer
+          packer init hivestack.pkr.hcl
+          packer build -var "version=${GITHUB_REF#refs/tags/}" hivestack.pkr.hcl
+      
+      - name: Convert images
+        run: |
+          cd appliance/packer/output-hivestack
+          VERSION=${GITHUB_REF#refs/tags/}
+          
+          # Convert QCOW2 to VMDK
+          qemu-img convert -f qcow2 -O vmdk "hivestack-${VERSION}.qcow2" "hivestack-${VERSION}.vmdk"
+          
+          # Convert QCOW2 to VHD (Hyper-V)
+          qemu-img convert -f qcow2 -O vpc "hivestack-${VERSION}.qcow2" "hivestack-${VERSION}.vhd"
+          
+          # Generate checksums
+          sha256sum *.qcow2 *.vmdk *.vhd > checksums.txt 2>/dev/null || true
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vm-images
+          path: appliance/packer/output-hivestack/
+          retention-days: 1
+
+  # Build bootable ISO
+  build-iso:
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Install live-build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build squashfs-tools xorriso grub-efi-amd64-bin
+      
+      - name: Build ISO
+        run: |
+          cd appliance/live-build
+          export HIVE_VERSION=${GITHUB_REF#refs/tags/v}
+          sudo -E ./build-iso.sh
+      
+      - name: Generate checksums
+        run: |
+          cd appliance/live-build/output
+          sha256sum *.iso > checksums.txt
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iso-image
+          path: appliance/live-build/output/
+          retention-days: 1
+
+  # Create GitHub Release with all artifacts
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-binaries, build-docker, build-vm-images, build-iso]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          
+          # Create release notes
+          cat > release-notes.md <<EOF
+          # HiveStack ${VERSION}
+          
+          ## Downloads
+          
+          ### Virtual Machine Images
+          | Format | File | SHA256 |
+          |--------|------|--------|
+          | QCOW2 (KVM/QEMU) | hivestack-${VERSION}.qcow2 | $(cat artifacts/vm-images/checksums.txt | grep qcow2 | awk '{print $1}') |
+          | VMDK (VMware) | hivestack-${VERSION}.vmdk | $(cat artifacts/vm-images/checksums.txt | grep vmdk | awk '{print $1}') |
+          | VHD (Hyper-V) | hivestack-${VERSION}.vhd | $(cat artifacts/vm-images/checksums.txt | grep vhd | awk '{print $1}') |
+          
+          ### Bootable ISO
+          | Format | File | SHA256 |
+          |--------|------|--------|
+          | ISO | hivestack-appliance-${VERSION}-amd64.iso | $(cat artifacts/iso-image/checksums.txt | head -1 | awk '{print $1}') |
+          
+          ### Docker
+          \`\`\`bash
+          docker pull ghcr.io/maddydevel/hivestack:${VERSION}
+          \`\`\`
+          
+          ### Binaries
+          - Linux AMD64: hivestack-${VERSION}-linux-amd64.tar.gz
+          - Linux ARM64: hivestack-${VERSION}-linux-arm64.tar.gz
+          - macOS AMD64: hivestack-${VERSION}-darwin-amd64.tar.gz
+          - macOS ARM64: hivestack-${VERSION}-darwin-arm64.tar.gz
+          
+          ## Quick Start
+          
+          ### Docker
+          \`\`\`bash
+          docker run -d --name hivestack \\
+            -p 8080:8080 -p 8443:8443 \\
+            ghcr.io/maddydevel/hivestack:${VERSION}
+          \`\`\`
+          
+          ### VM (QEMU/KVM)
+          \`\`\`bash
+          qemu-system-x86_64 -m 4G -drive file=hivestack-${VERSION}.qcow2,format=qcow2 -enable-kvm
+          \`\`\`
+          
+          ### ISO
+          \`\`\`bash
+          sudo dd if=hivestack-appliance-${VERSION}-amd64.iso of=/dev/sdX bs=4M status=progress
+          \`\`\`
+          
+          ## First Boot Access
+          - Web UI: https://<ip>:8443
+          - API: https://<ip>:8443/api/v1
+          - Health: http://<ip>:8080/api/v1/health
+          
+          ## Full Changelog
+          See [CHANGELOG.md](https://github.com/maddydevel/HiveStack/blob/main/CHANGELOG.md)
+          EOF
+          
+          # Create the release
+          gh release create "${VERSION}" \
+            --title "HiveStack ${VERSION}" \
+            --notes-file release-notes.md \
+            --draft \
+            artifacts/vm-images/* \
+            artifacts/iso-image/* \
+            artifacts/binaries-*/*

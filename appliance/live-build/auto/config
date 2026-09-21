@@ -1,0 +1,33 @@
+#!/bin/bash
+# HiveStack Appliance - Live Build Configuration
+set -euo pipefail
+
+lb config noauto \
+    --mode ubuntu \
+    --distribution noble \
+    --architecture amd64 \
+    --binary-images iso-hybrid \
+    --linux-flavours amd64 \
+    --linux-packages linux-image \
+    --bootloader grub-efi \
+    --debian-installer live \
+    --debian-installer-gui disabled \
+    --archive-areas "main restricted universe multiverse" \
+    --parent-mirror-bootstrap http://archive.ubuntu.com/ubuntu \
+    --parent-mirror-binary http://archive.ubuntu.com/ubuntu \
+    --mirror-bootstrap http://archive.ubuntu.com/ubuntu \
+    --mirror-binary http://archive.ubuntu.com/ubuntu \
+    --security true \
+    --updates true \
+    --backports false \
+    --apt-indices false \
+    --memtest none \
+    --win32-loader false \
+    --load-media-from-removable false \
+    --iso-application "HiveStack Appliance" \
+    --iso-preparer "Maddy AI Consultancy" \
+    --iso-publisher "Maddy AI Consultancy" \
+    --iso-volume "HiveStack ${HIVE_VERSION:-1.0.0}" \
+    --bootappend-live "boot=casper hostname=hivestack username=hivestack quiet splash" \
+    --bootappend-install "boot=casper hostname=hivestack username=hivestack quiet" \
+    "$@"

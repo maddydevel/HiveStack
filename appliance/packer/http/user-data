@@ -1,0 +1,31 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  network:
+    version: 2
+    ethernets:
+      all-en:
+        match:
+          name: "en*"
+        dhcp4: true
+  storage:
+    layout:
+      name: direct
+  identity:
+    hostname: hivestack
+    username: hivestack
+    password: "$6$rounds=4096$xyz$hivestack"
+  ssh:
+    install-server: true
+    allow-pw: true
+    authorized-keys: []
+  packages:
+    - qemu-guest-agent
+    - openssh-server
+  user-data:
+    disable_root: false
+  late_commands:
+    - curtin in-target --target=/target -- systemctl enable ssh
