@@ -63,8 +63,8 @@ mksquashfs "${BUILD_DIR}/rootfs" "${BUILD_DIR}/root.sqsh" -comp xz
 
 # Setup boot
 mkdir -p "${BUILD_DIR}/iso/"{boot,isolinux,efi/boot}
-cp /boot/vmlinuz-7.0.0-31-generic "${BUILD_DIR}/iso/boot/vmlinuz"
-cp /boot/initrd.img-7.0.0-31-generic "${BUILD_DIR}/iso/boot/initrd.img"
+cp /boot/vmlinuz-6.14.0-37-generic "${BUILD_DIR}/iso/boot/vmlinuz"
+cp /boot/initrd.img-6.14.0-37-generic "${BUILD_DIR}/iso/boot/initrd.img"
 cp "${BUILD_DIR}/root.sqsh" "${BUILD_DIR}/iso/boot/root.sqsh"
 
 # Syslinux
