@@ -1,3 +1,7 @@
+# HiveStack Appliance — Release Workflow
+# Builds and publishes bootable ISO, VM images, Docker image, and binaries
+# Triggers on tag push (v*)
+
 name: Release Appliance
 
 on:
@@ -119,14 +123,8 @@ jobs:
         run: |
           cd appliance/packer/output-hivestack
           VERSION=${GITHUB_REF#refs/tags/}
-          
-          # Convert QCOW2 to VMDK
           qemu-img convert -f qcow2 -O vmdk "hivestack-${VERSION}.qcow2" "hivestack-${VERSION}.vmdk"
-          
-          # Convert QCOW2 to VHD (Hyper-V)
           qemu-img convert -f qcow2 -O vpc "hivestack-${VERSION}.qcow2" "hivestack-${VERSION}.vhd"
-          
-          # Generate checksums
           sha256sum *.qcow2 *.vmdk *.vhd > checksums.txt 2>/dev/null || true
       
       - uses: actions/upload-artifact@v4
@@ -141,34 +139,32 @@ jobs:
     needs: build-binaries
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      
-      - name: Install live-build
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y live-build squashfs-tools xorriso grub-efi-amd64-bin
-      
+          sudo apt-get install -y genisoimage squashfs-tools syslinux \
+            syslinux-common grub-efi-amd64-signed grub-pc-bin \
+            debootstrap qemu-utils
+
       - name: Build ISO
+        env:
+          HIVESTACK_VERSION: ${{ github.ref_name }}
         run: |
-          cd appliance/live-build
-          export HIVE_VERSION=${GITHUB_REF#refs/tags/v}
-          sudo -E ./build-iso.sh
-      
-      - name: Generate checksums
-        run: |
-          cd appliance/live-build/output
-          sha256sum *.iso > checksums.txt
-      
-      - uses: actions/upload-artifact@v4
+          sudo ./appliance/scripts/build-iso.sh
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
         with:
           name: iso-image
-          path: appliance/live-build/output/
+          path: build/iso/output/
           retention-days: 1
 
-  # Create GitHub Release with all artifacts
+  # Create GitHub Release
   release:
     runs-on: ubuntu-latest
     needs: [build-binaries, build-docker, build-vm-images, build-iso]
@@ -185,23 +181,20 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           
-          # Create release notes
           cat > release-notes.md <<EOF
           # HiveStack ${VERSION}
           
           ## Downloads
           
           ### Virtual Machine Images
-          | Format | File | SHA256 |
-          |--------|------|--------|
-          | QCOW2 (KVM/QEMU) | hivestack-${VERSION}.qcow2 | $(cat artifacts/vm-images/checksums.txt | grep qcow2 | awk '{print $1}') |
-          | VMDK (VMware) | hivestack-${VERSION}.vmdk | $(cat artifacts/vm-images/checksums.txt | grep vmdk | awk '{print $1}') |
-          | VHD (Hyper-V) | hivestack-${VERSION}.vhd | $(cat artifacts/vm-images/checksums.txt | grep vhd | awk '{print $1}') |
+          | Format | File |
+          |--------|------|
+          | QCOW2 (KVM/QEMU) | hivestack-${VERSION}.qcow2 |
+          | VMDK (VMware) | hivestack-${VERSION}.vmdk |
+          | VHD (Hyper-V) | hivestack-${VERSION}.vhd |
           
           ### Bootable ISO
-          | Format | File | SHA256 |
-          |--------|------|--------|
-          | ISO | hivestack-appliance-${VERSION}-amd64.iso | $(cat artifacts/iso-image/checksums.txt | head -1 | awk '{print $1}') |
+          hivestack-appliance-${VERSION}-amd64.iso
           
           ### Docker
           \`\`\`bash
@@ -218,12 +211,10 @@ jobs:
           
           ### Docker
           \`\`\`bash
-          docker run -d --name hivestack \\
-            -p 8080:8080 -p 8443:8443 \\
-            ghcr.io/maddydevel/hivestack:${VERSION}
+          docker run -d --name hivestack -p 8080:8080 -p 8443:8443 ghcr.io/maddydevel/hivestack:${VERSION}
           \`\`\`
           
-          ### VM (QEMU/KVM)
+          ### VM
           \`\`\`bash
           qemu-system-x86_64 -m 4G -drive file=hivestack-${VERSION}.qcow2,format=qcow2 -enable-kvm
           \`\`\`
@@ -233,16 +224,14 @@ jobs:
           sudo dd if=hivestack-appliance-${VERSION}-amd64.iso of=/dev/sdX bs=4M status=progress
           \`\`\`
           
-          ## First Boot Access
+          ## First Boot
           - Web UI: https://<ip>:8443
           - API: https://<ip>:8443/api/v1
           - Health: http://<ip>:8080/api/v1/health
           
-          ## Full Changelog
           See [CHANGELOG.md](https://github.com/maddydevel/HiveStack/blob/main/CHANGELOG.md)
           EOF
           
-          # Create the release
           gh release create "${VERSION}" \
             --title "HiveStack ${VERSION}" \
             --notes-file release-notes.md \
