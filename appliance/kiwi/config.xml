@@ -1,33 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- HiveStack Appliance - SLES 15 SP7 KIWI Image Description -->
-<!-- Build: kiwi-ng --type iso --description appliance/kiwi --target-dir /tmp/kiwi-build -->
+<!-- HiveStack Appliance - openSUSE Leap 15.5 KIWI Image Description -->
+<!-- openSUSE Leap 15.5 is the open-source base for SLES 15 SP7 -->
+<!-- Build: kiwi-ng system build --description . --target-dir /tmp/kiwi-build -->
 
-<image schemaversion="7.5" name="hivestack-appliance">
+<image schemaversion="7.4" name="hivestack-appliance">
     <description type="image">
         <author>Maddy AI Consultancy</author>
         <contact>contact@maddyai.dev</contact>
-        <specification>HiveStack KVM Hypervisor Management Appliance on SLES 15 SP7</specification>
+        <specification>HiveStack KVM Hypervisor Management Appliance on openSUSE Leap 15.5 (SLES 15 SP7 compatible)</specification>
     </description>
 
-    <!-- SLES 15 SP7 Repositories -->
+    <!-- Repositories -->
     <repositories>
-        <repository type="rpm-md" alias="SLE15-SP7-Pool" priority="1">
-            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/GA/standard/"/>
+        <repository type="rpm-md" alias="Leap-15.5-OSS" priority="1">
+            <source path="http://download.opensuse.org/distribution/leap/15.5/repo/oss/"/>
         </repository>
-        <repository type="rpm-md" alias="SLE15-SP7-Updates" priority="1">
-            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/Update/standard/"/>
+        <repository type="rpm-md" alias="Leap-15.5-Non-OSS" priority="1">
+            <source path="http://download.opensuse.org/distribution/leap/15.5/repo/non-oss/"/>
         </repository>
-        <repository type="rpm-md" alias="SLE-Module-Basesystem" priority="1">
-            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/GA:/Products/Basesystem/standard/"/>
-        </repository>
-        <repository type="rpm-md" alias="SLE-Module-Server-Applications" priority="1">
-            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/GA:/Products/Server-Applications/standard/"/>
+        <repository type="rpm-md" alias="Leap-15.5-Update" priority="1">
+            <source path="http://download.opensuse.org/update/leap/15.5/oss/"/>
         </repository>
         <repository type="rpm-md" alias="Virtualization" priority="2">
-            <source path="https://download.opensuse.org/repositories/Virtualization:/kvm/SLE_15_SP7/"/>
-        </repository>
-        <repository type="rpm-md" alias="SLE-Module-Containers" priority="2">
-            <source path="https://download.suse.com/ibs/SUSE:/SLE-15-SP7:/GA:/Products/Containers/standard/"/>
+            <source path="http://download.opensuse.org/repositories/Virtualization:/kvm/openSUSE_Leap_15.5/"/>
         </repository>
     </repositories>
 
@@ -37,16 +32,10 @@
         <package name="aaa_base"/>
         <package name="bash"/>
         <package name="coreutils"/>
-        <package name="grep"/>
-        <package name="sed"/>
-        <package name="gzip"/>
-        <package name="tar"/>
-        <package name="rpm"/>
         <package name="systemd"/>
         <package name="systemd-sysvinit"/>
         <package name="udev"/>
         <package name="kernel-default"/>
-        <package name="kernel-firmware-all"/>
         <package name="dracut"/>
         <package name="grub2"/>
         <package name="grub2-x86_64-efi"/>
@@ -54,14 +43,12 @@
 
         <!-- Network -->
         <package name="NetworkManager"/>
-        <package name="NetworkManager-wifi"/>
         <package name="iproute2"/>
         <package name="iputils"/>
         <package name="ethtool"/>
         <package name="bridge-utils"/>
         <package name="vlan"/>
         <package name="openvswitch"/>
-        <package name="openvswitch-kmp-default"/>
         <package name="wicked"/>
 
         <!-- Virtualization (KVM/QEMU/libvirt) -->
@@ -73,7 +60,6 @@
         <package name="libvirt-client"/>
         <package name="virt-install"/>
         <package name="libguestfs-tools"/>
-        <package name="guestfsd"/>
 
         <!-- Database -->
         <package name="postgresql15-server"/>
@@ -84,12 +70,12 @@
         <package name="curl"/>
         <package name="wget"/>
         <package name="ca-certificates"/>
-        <package name="cronie"/>
-        <package name="logrotate"/>
         <package name="sudo"/>
-        <package name="jq"/>
         <package name="nano"/>
         <package name="less"/>
+        <package name="vim-small"/>
+        <package name="jq"/>
+        <package name="tree"/>
 
         <!-- Security -->
         <package name="firewalld"/>
@@ -99,30 +85,33 @@
         <!-- Monitoring -->
         <package name="prometheus-node-exporter"/>
 
-        <!-- Cockpit (Web UI) -->
-        <package name="cockpit"/>
-        <package name="cockpit-machines"/>
-        <package name="cockpit-storaged"/>
-        <package name="cockpit-networkmanager"/>
+        <!-- Time sync -->
+        <package name="chrony"/>
+
+        <!-- Logging -->
+        <package name="rsyslog"/>
+        <package name="logrotate"/>
+
+        <!-- Cron -->
+        <package name="cronie"/>
 
         <!-- Container runtime -->
         <package name="podman"/>
         <package name="buildah"/>
     </packages>
 
-    <!-- Root user configuration -->
+    <!-- Root user -->
     <users>
-        <user password="$6$rounds=4096$xyz$hivestack" home="/root" name="root" groups="root"/>
-        <user password="$6$rounds=4096$xyz$hivestack" home="/home/hivestack" name="hivestack" groups="hivestack,libvirt"/>
+        <user password="hivestack" home="/root" name="root" groups="root"/>
     </users>
 
     <!-- Type: ISO image -->
     <preference type="iso" flags="overlay" hybridpersistent_filesystem="ext4" hybridpersistent="true" volid="HIVESTACK">
-        <type image="iso" hybrid="true" firmware="uefi" bootloader="grub2" bootkernel="std" mediacheck="true" checkmedia="true"/>
+        <type image="iso" hybrid="true" firmware="uefi" bootloader="grub2" bootkernel="std"/>
     </preference>
 
-    <!-- Boot scripts -->
+    <!-- Profiles -->
     <profiles>
-        <profile name="Standard" description="Standard HiveStack appliance"/>
+        <profile name="Default" description="Default HiveStack appliance"/>
     </profiles>
 </image>
