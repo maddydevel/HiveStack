@@ -1,0 +1,25 @@
+[Unit]
+Description=HiveStack Node Agent
+Documentation=https://github.com/maddydevel/HiveStack
+After=network.target libvirtd.service
+Wants=libvirtd.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/hivestack/bin/hive-node --config /etc/hivestack/node.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Required for KVM/libvirt access
+PrivateDevices=false
+ProtectHome=yes
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

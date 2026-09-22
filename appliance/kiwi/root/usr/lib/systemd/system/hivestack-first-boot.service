@@ -1,0 +1,14 @@
+[Unit]
+Description=HiveStack First Boot Setup
+Documentation=https://github.com/maddydevel/HiveStack
+After=network.target postgresql.service
+Before=hivestack-manager.service hivestack-node.service
+ConditionPathExists=!/etc/hivestack/.first-boot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/opt/hivestack/scripts/first-boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

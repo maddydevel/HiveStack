@@ -1,0 +1,29 @@
+[Unit]
+Description=HiveStack Manager
+Documentation=https://github.com/maddydevel/HiveStack
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hivestack
+Group=hivestack
+ExecStart=/opt/hivestack/bin/hive-manager --config /etc/hivestack/manager.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/hivestack /var/log/hivestack /etc/hivestack/certs
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Resource limits
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target
