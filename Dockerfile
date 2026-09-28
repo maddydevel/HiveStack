@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ============================================================================
 # Stage 2: Runtime
 # ============================================================================
-FROM alpine:3.20
+FROM alpine:3.24
 
 LABEL maintainer="Maddy AI Consultancy <contact@maddyai.dev>"
 LABEL org.opencontainers.image.title="HiveStack Manager"
